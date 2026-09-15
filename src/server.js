@@ -1,9 +1,15 @@
-import { env } from './config/env.js'; // throws + exits before anything else if .env is broken
-import { connectDb } from './db/connection.js';
-import { ensureIndexes } from './db/indexes.js';
-import { createApp } from './app.js';
-
+// Every import below is dynamic (inside main()) rather than a static
+// top-level import. config/env.js throws synchronously if .env is invalid,
+// and a *static* import that throws crashes the process before our own
+// code runs at all — printing Node's raw stack trace instead of the clean
+// message env.js built. Dynamic imports turn that into a normal rejected
+// promise we can catch below.
 async function main() {
+  const { env } = await import('./config/env.js');
+  const { connectDb } = await import('./db/connection.js');
+  const { ensureIndexes } = await import('./db/indexes.js');
+  const { createApp } = await import('./app.js');
+
   const db = await connectDb();
   await ensureIndexes(db);
 
