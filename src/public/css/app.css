@@ -1,0 +1,125 @@
+/* App chrome (everything that is NOT the A4 paper itself — see a4.css for that). */
+
+:root {
+  --color-bg: #f4f5f7;
+  --color-surface: #ffffff;
+  --color-border: #dfe2e7;
+  --color-text: #1f2430;
+  --color-text-muted: #6b7280;
+  --color-primary: #2f6fed;
+  --color-primary-dark: #244fb5;
+  --color-danger: #d6483f;
+  --color-warning: #b8860b;
+  --font-sans: 'Sarabun', 'Noto Sans Thai', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+
+a { color: var(--color-primary); }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.topbar-brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.topbar-nav { display: flex; gap: 1rem; flex: 1; }
+.topbar-nav a { color: var(--color-text-muted); text-decoration: none; font-size: 0.95rem; }
+.topbar-nav a:hover { color: var(--color-primary); }
+
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.topbar-user-name { color: var(--color-text); font-weight: 600; }
+
+.link-button {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+.link-button:hover { text-decoration: underline; }
+
+.page { max-width: 960px; margin: 2rem auto; padding: 0 1.25rem; }
+
+.button {
+  display: inline-block;
+  padding: 0.55rem 1.1rem;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.button:hover { background: var(--color-primary-dark); }
+.button.secondary { background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); }
+.button.danger { background: var(--color-danger); }
+
+/* Auth pages (mock login, SSO error) */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg);
+}
+
+.auth-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 2rem;
+  width: 100%;
+  max-width: 420px;
+  text-align: center;
+}
+
+.auth-hint { color: var(--color-text-muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+
+.mock-user-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+
+.mock-user-button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.mock-user-button:hover { border-color: var(--color-primary); background: #f5f8ff; }
+.mock-user-name { font-weight: 600; }
+.mock-user-meta { font-size: 0.82rem; color: var(--color-text-muted); }

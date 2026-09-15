@@ -1,0 +1,8 @@
+<%- include('partials/head', {title: 'หน้าแรก'}) %>
+<body>
+<%- include('partials/topbar', {user}) %>
+  <main class="page">
+    <p>เข้าสู่ระบบสำเร็จ ยินดีต้อนรับ <strong><%= user.name %></strong></p>
+    <p><a href="/inbox">ไปที่กล่องงาน →</a></p>
+  </main>
+<%- include('partials/foot') %>

@@ -1,0 +1,22 @@
+<%- include('partials/head', {title: 'เข้าสู่ระบบ (mock)'}) %>
+<body class="auth-page">
+  <div class="auth-card">
+    <h1>its-forms</h1>
+    <p class="auth-hint">โหมดทดสอบ (mock) — เลือกพนักงานเพื่อเข้าสู่ระบบเป็นคนนั้น</p>
+    <ul class="mock-user-list">
+      <% employees.forEach(function(emp) { %>
+        <li>
+          <form method="POST" action="/auth/mock-login">
+            <input type="hidden" name="emp_id" value="<%= emp.emp_id %>">
+            <button type="submit" class="mock-user-button">
+              <span class="mock-user-name"><%= emp.name %></span>
+              <span class="mock-user-meta">
+                <%= emp.position ? emp.position.name : '' %> · <%= emp.department ? emp.department.name : '—' %>
+              </span>
+            </button>
+          </form>
+        </li>
+      <% }) %>
+    </ul>
+  </div>
+<%- include('partials/foot') %>

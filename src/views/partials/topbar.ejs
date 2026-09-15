@@ -1,0 +1,15 @@
+<header class="topbar">
+  <a href="/" class="topbar-brand">its-forms</a>
+  <nav class="topbar-nav">
+    <a href="/inbox">กล่องงาน</a>
+  </nav>
+  <div class="topbar-user">
+    <span class="topbar-user-name">
+      <%= user.name %><% if (user.nickname) { %> (<%= user.nickname %>)<% } %>
+    </span>
+    <span class="topbar-user-dept"><%= user.department ? user.department.name : '—' %></span>
+    <form method="POST" action="/auth/logout" class="topbar-logout-form">
+      <button type="submit" class="link-button">ออกจากระบบ</button>
+    </form>
+  </div>
+</header>
