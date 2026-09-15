@@ -1,0 +1,22 @@
+{
+  "name": "its-forms",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Internal online forms + approval workflow system (replaces paper MEMO)",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node --env-file=.env src/server.js",
+    "dev": "node --watch --env-file=.env src/server.js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "cookie-session": "^2.1.0",
+    "ejs": "^3.1.10",
+    "express": "^4.21.0",
+    "mongodb": "^6.9.0",
+    "multer": "^1.4.5-lts.1"
+  }
+}

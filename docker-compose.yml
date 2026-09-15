@@ -1,0 +1,35 @@
+# Dev compose — copied from docs/requirement.md appendix E.2 as instructed
+# ("ใช้ไฟล์ในภาคผนวก E.2 ตรง ๆ อย่าตั้งเอง"), with one necessary addition:
+# an anonymous volume on /app/node_modules so the `.:/app` bind mount (meant
+# for host-editing without rebuilding) doesn't shadow the node_modules that
+# were installed *inside* the image during build.
+services:
+  mongo:
+    image: mongo:5.0                       # must stay 5.0 — not latest/6/7
+    command: ["mongod", "--bind_ip_all"]   # no --replSet = standalone, same as production
+    ports:
+      - "27017:27017"                      # lets you open it with MongoDB Compass from the host
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongo", "--quiet", "--eval", "db.runCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    env_file: .env
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    volumes:
+      - uploads:/data/uploads
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+volumes:
+  mongo-data:
+  uploads:

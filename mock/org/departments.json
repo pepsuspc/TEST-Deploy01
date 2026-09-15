@@ -1,0 +1,9 @@
+{
+  "success": true,
+  "count": 3,
+  "data": [
+    { "id": "64a000000000000000000002", "name": "ฝ่ายบัญชี", "positions": [ { "id": "acc_mgr", "name": "ผู้จัดการฝ่ายบัญชี" }, { "id": "acc_staff", "name": "พนักงานบัญชี" } ], "head": { "emp_id": "E003", "name": "ศรัญญา ประทุม" }, "member_count": 2 },
+    { "id": "64a000000000000000000001", "name": "ฝ่ายไอที", "positions": [ { "id": "it_mgr", "name": "ผู้จัดการฝ่ายไอที" }, { "id": "it_dev", "name": "โปรแกรมเมอร์" } ], "head": { "emp_id": "E001", "name": "นิมิต คงอำนาจ" }, "member_count": 2 },
+    { "id": "64a000000000000000000003", "name": "ฝ่ายขาย", "positions": [ { "id": "sale_lead", "name": "หัวหน้าทีมขาย" }, { "id": "sale_staff", "name": "พนักงานขาย" } ], "head": null, "member_count": 3 }
+  ]
+}
