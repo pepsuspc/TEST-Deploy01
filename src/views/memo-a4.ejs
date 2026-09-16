@@ -103,7 +103,7 @@ const errs = typeof errors === 'undefined' ? {} : errors;
       <div class="a4-grid">
         <% elements.forEach(function (el) { %>
           <% const value = submission.values ? submission.values[el.id] : undefined; %>
-          <div class="a4-field" style="grid-column: <%= el.col %> / span <%= el.colSpan %>;">
+          <div class="a4-field <%= el.type === 'table' ? 'a4-field-table' : '' %>" style="grid-column: <%= el.col %> / span <%= el.colSpan %>;">
 
             <% if (el.type === 'short_text') { %>
               <label class="a4-field-label" for="f_<%= el.id %>">

@@ -77,6 +77,29 @@
 
 .a4-field {
   min-width: 0;
+  /* §8.6: "เนื้อหายาวเกิน 1 หน้า A4 ... ตัดที่ขอบแถว ไม่ตัดกลางแถว" — a
+     single field's own content shouldn't split mid-way across a page
+     break. The table field overrides this below (a long table SHOULD
+     span pages, repeating its header). */
+  break-inside: avoid;
+}
+
+/* §8.7: the footer approval table must stay on one page, never split. */
+.a4-footer-approval-table {
+  break-inside: avoid;
+}
+
+/* §8.7: a long table field's rows may span pages, header repeating on
+   each page (a browser built-in for <thead> across a print break). The
+   field's *wrapping* div also needs break-inside:auto — otherwise the
+   parent's own avoid (above) would try to keep the whole label+table
+   together as one unbreakable unit, defeating the point. */
+.a4-field-table,
+.a4-table-field {
+  break-inside: auto;
+}
+.a4-table-field thead {
+  display: table-header-group;
 }
 
 .a4-field-label {
