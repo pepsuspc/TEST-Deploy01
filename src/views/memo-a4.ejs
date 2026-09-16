@@ -109,9 +109,20 @@ const errs = typeof errors === 'undefined' ? {} : errors;
         <div class="a4-watermark is-neutral">ร่าง</div>
       <% } %>
 
+      <% const lh = typeof letterhead !== 'undefined' ? letterhead : null; %>
       <div class="a4-letterhead">
-        <div class="a4-letterhead-logo"></div>
-        <div class="a4-letterhead-company">ชื่อบริษัท (ตัวอย่าง — ตั้งค่าจริงในหน้า admin ของก้อนที่ 4)<br>ที่อยู่บริษัท</div>
+        <% if (lh && lh.logoDataUri) { %>
+          <img class="a4-letterhead-logo" src="<%= lh.logoDataUri %>" alt="">
+        <% } else { %>
+          <div class="a4-letterhead-logo"></div>
+        <% } %>
+        <div class="a4-letterhead-company">
+          <% if (lh) { %>
+            <%= lh.companyName %><% if (lh.address) { %><br><%= lh.address %><% } %><% if (lh.phone) { %> · โทร. <%= lh.phone %><% } %>
+          <% } else { %>
+            &nbsp;
+          <% } %>
+        </div>
       </div>
 
       <div class="a4-title-bar">

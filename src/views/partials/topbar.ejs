@@ -6,6 +6,10 @@
     <% if (user.roles && (user.roles.includes('admin') || user.roles.includes('form_owner'))) { %>
       <a href="/manage/forms">จัดการฟอร์ม</a>
     <% } %>
+    <% if (user.roles && user.roles.includes('admin')) { %>
+      <a href="/admin/settings">ตั้งค่าระบบ</a>
+      <a href="/admin/audit">Audit log</a>
+    <% } %>
   </nav>
   <div class="topbar-user">
     <div class="notif-wrap">

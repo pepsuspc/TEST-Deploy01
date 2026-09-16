@@ -67,13 +67,14 @@ submissionsRouter.get(
     if (submission.status !== 'draft') {
       throw new HttpError(409, 'คำร้องนี้ไม่ได้อยู่ในสถานะร่างแล้ว — เปิดดูแทน');
     }
-    const { elements, formName, workflowSteps } = await formContextFor(submission);
+    const { elements, formName, workflowSteps, letterhead } = await formContextFor(submission);
     const { slots, employees } = await loadChoiceContext(workflowSteps);
     res.render('memo-a4', {
       mode: 'edit',
       submission,
       elements,
       formName,
+      letterhead,
       errors: {},
       user: req.user,
       submitterChoiceSlots: slots,
@@ -121,13 +122,14 @@ submissionsRouter.post(
       expectedVersion: clientVersion(req),
     });
     if (!result.ok) {
-      const { elements, formName, workflowSteps } = await formContextFor(result.submission);
+      const { elements, formName, workflowSteps, letterhead } = await formContextFor(result.submission);
       const { slots, employees } = await loadChoiceContext(workflowSteps);
       return res.status(422).render('memo-a4', {
         mode: 'edit',
         submission: result.submission,
         elements,
         formName,
+        letterhead,
         errors: result.errors || {},
         blocked: result.blocked,
         user: req.user,
@@ -258,12 +260,13 @@ submissionsRouter.get(
     if (!isRelatedToSubmission(submission, req.user.emp_id) && !req.user.roles?.includes('admin')) {
       throw new HttpError(403, 'คุณไม่มีสิทธิ์ดูคำร้องนี้');
     }
-    const { elements, formName } = await formContextFor(submission);
+    const { elements, formName, letterhead } = await formContextFor(submission);
     res.render('memo-a4', {
       mode: 'view',
       submission,
       elements,
       formName,
+      letterhead,
       errors: {},
       user: req.user,
       canDecide: canDecide(submission, req.user.emp_id),

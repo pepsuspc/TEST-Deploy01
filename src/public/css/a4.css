@@ -40,6 +40,7 @@
   background: #d9d9d9;
   border-radius: 2mm;
   flex-shrink: 0;
+  object-fit: contain; /* only applies when this is the real <img>, not the empty placeholder div */
 }
 
 .a4-letterhead-company {

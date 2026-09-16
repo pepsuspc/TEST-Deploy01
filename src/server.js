@@ -5,6 +5,7 @@
 // message env.js built. Dynamic imports turn that into a normal rejected
 // promise we can catch below.
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
 
 async function main() {
   const { env } = await import('./config/env.js');
@@ -14,6 +15,7 @@ async function main() {
   const { syncUsers } = await import('./org/sync.js');
   const { sweepOrphanFiles } = await import('./models/files.js');
   const { seedMemoForm } = await import('./db/seedForms.js');
+  const { processEmailQueue, runOverdueDigestIfDue } = await import('./mail/worker.js');
 
   const db = await connectDb();
   await ensureIndexes(db);
@@ -50,6 +52,16 @@ async function main() {
       .then((n) => n > 0 && console.log(`orphan file sweep: removed ${n}`))
       .catch((err) => console.error(`orphan file sweep failed: ${err.message}`));
   }, DAY_MS);
+
+  // §9.2: retry queue drained every minute; the digest job itself only
+  // fires once it's actually 08:00 Asia/Bangkok (runOverdueDigestIfDue
+  // no-ops otherwise), so checking every few minutes costs nothing.
+  setInterval(() => {
+    processEmailQueue().catch((err) => console.error(`email queue processing failed: ${err.message}`));
+  }, MINUTE_MS);
+  setInterval(() => {
+    runOverdueDigestIfDue().catch((err) => console.error(`overdue digest failed: ${err.message}`));
+  }, 5 * MINUTE_MS);
 
   const app = createApp(db);
   app.listen(env.port, () => {

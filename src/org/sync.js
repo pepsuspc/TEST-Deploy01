@@ -3,9 +3,9 @@
 // view (§6), and so old submissions can still show the names of people who
 // have since left (§D.8).
 
-import { getDb } from '../db/connection.js';
 import { orgApi } from './client.js';
 import { upsertUserFromOrg } from '../models/users.js';
+import { recordOrgSync } from '../models/settings.js';
 import { env } from '../config/env.js';
 
 export async function syncUsers() {
@@ -18,9 +18,7 @@ export async function syncUsers() {
   }
 
   const now = new Date();
-  await getDb()
-    .collection('settings')
-    .updateOne({ _id: 'global' }, { $set: { orgSyncedAt: now, orgSyncedCount: count } }, { upsert: true });
+  await recordOrgSync(count, now);
 
   return { count, at: now };
 }

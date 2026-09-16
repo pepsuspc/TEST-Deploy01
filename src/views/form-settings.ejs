@@ -16,6 +16,15 @@
     </label><br><br>
     <label>คำอธิบายสั้น<br><textarea class="a4-input" name="description" rows="2"><%= form.description %></textarea></label><br><br>
     <label>Prefix เลขที่เอกสาร: <strong><%= form.docPrefix %></strong> <span class="a4-save-status">(ล็อกหลังมีคำร้องใบแรก)</span></label><br><br>
+    <label>หัวกระดาษ<br>
+      <select class="a4-input" name="letterheadId" style="width:auto">
+        <option value="">— ไม่มี —</option>
+        <% letterheads.forEach(function (lh) { %>
+          <option value="<%= lh._id %>" <%= String(form.letterheadId) === String(lh._id) ? 'selected' : '' %>><%= lh.name %><%= lh.enabled ? '' : ' (ปิดใช้)' %></option>
+        <% }) %>
+      </select>
+      <span class="a4-save-status">จัดการรายการหัวกระดาษได้ที่ <a href="/admin/settings">ตั้งค่าระบบ</a></span>
+    </label><br><br>
     <label><input type="checkbox" name="allowAllDepartments" <%= form.allowedDepartmentIds.length === 0 ? 'checked' : '' %>> ทุกแผนกยื่นได้</label><br>
     <div>
       <% departments.forEach(function (d) { %>
@@ -23,6 +32,16 @@
       <% }) %>
     </div>
     <br>
+
+    <div class="props-field">
+      <p class="a4-save-status">ผู้ดูแลหลัก: <%= form.ownerEmpIds.map(function (id) { const e = employees.find(function (x) { return x.emp_id === id; }); return e ? e.name : id; }).join(', ') %></p>
+      <label>ผู้ดูแลร่วม <span class="a4-save-status">(แก้ไข/เผยแพร่ฟอร์มนี้ได้เหมือนผู้ดูแลหลัก)</span></label>
+      <ul id="coowner-list" class="file-field-list"></ul>
+      <div id="coowner-search" style="max-width: 20rem;"></div>
+      <div id="coowner-hidden-inputs"></div>
+    </div>
+    <br>
+
     <button type="submit" class="button">บันทึกตั้งค่า</button>
   </form>
 
@@ -46,4 +65,13 @@
     </form>
   </div>
 </main>
+<script>
+  window.__FORM_SETTINGS_INIT__ = {
+    employees: <%- JSON.stringify(employees) %>,
+    ownerEmpIds: <%- JSON.stringify(form.ownerEmpIds) %>,
+    coOwnerEmpIds: <%- JSON.stringify(form.coOwnerEmpIds) %>,
+  };
+</script>
+<script src="/js/employee-search.js"></script>
+<script src="/js/form-settings.js"></script>
 <%- include('partials/foot') %>

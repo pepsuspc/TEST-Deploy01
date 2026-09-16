@@ -1,0 +1,52 @@
+<%- include('partials/head', {title: 'Audit log'}) %>
+<body>
+<%- include('partials/topbar', {user}) %>
+<main class="page">
+  <h1>Audit log</h1>
+
+  <form method="GET" class="action-panel">
+    <label>ผู้กระทำ (emp_id) <input class="a4-input" style="width:auto;display:inline-block" type="text" name="actorEmpId" value="<%= query.actorEmpId || '' %>"></label>
+    <label>ชนิด
+      <select class="a4-input" style="width:auto;display:inline-block" name="entityType">
+        <option value="">ทั้งหมด</option>
+        <% ['form','submission','user','settings'].forEach(function (t) { %>
+          <option value="<%= t %>" <%= query.entityType === t ? 'selected' : '' %>><%= t %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>จาก <input class="a4-input" style="width:auto;display:inline-block" type="date" name="from" value="<%= query.from || '' %>"></label>
+    <label>ถึง <input class="a4-input" style="width:auto;display:inline-block" type="date" name="to" value="<%= query.to || '' %>"></label>
+    <button type="submit" class="button secondary">กรอง</button>
+  </form>
+
+  <p><%= logs.total %> รายการ — append-only, ไม่มีปุ่มลบ</p>
+  <table class="a4-approval-table">
+    <thead><tr><th>เวลา</th><th>ผู้กระทำ</th><th>การกระทำ</th><th>ชนิด</th><th>เป้าหมาย</th><th>รายละเอียด</th></tr></thead>
+    <tbody>
+      <% logs.items.forEach(function (l) { %>
+        <tr>
+          <td><%= formatThaiDate(l.at, {withTime: true}) %></td>
+          <td><%= l.actorName %> (<%= l.actorEmpId %>)</td>
+          <td><%= l.action %></td>
+          <td><%= l.entityType %></td>
+          <td>
+            <% if (l.entityType === 'submission') { %><a href="/submissions/<%= l.entityId %>">เปิด</a>
+            <% } else if (l.entityType === 'form') { %><a href="/manage/forms/<%= l.entityId %>/settings">เปิด</a>
+            <% } else { %><%= l.entityId %><% } %>
+          </td>
+          <td><%= l.summary %></td>
+        </tr>
+      <% }) %>
+      <% if (logs.items.length === 0) { %><tr><td colspan="6" class="a4-save-status">ไม่มีรายการ</td></tr><% } %>
+    </tbody>
+  </table>
+
+  <% if (logs.pageCount > 1) { %>
+    <div class="pagination">
+      <% for (let p = 1; p <= logs.pageCount; p++) { %>
+        <a href="?<%= new URLSearchParams({...query, page: p}).toString() %>" class="<%= p === logs.page ? 'active' : '' %>"><%= p %></a>
+      <% } %>
+    </div>
+  <% } %>
+</main>
+<%- include('partials/foot') %>

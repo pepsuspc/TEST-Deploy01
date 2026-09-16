@@ -1,0 +1,116 @@
+<%- include('partials/head', {title: 'ตั้งค่าระบบ'}) %>
+<body>
+<%- include('partials/topbar', {user}) %>
+<main class="page">
+  <h1>ตั้งค่าระบบ</h1>
+
+  <section class="action-panel">
+    <h2>หัวกระดาษ</h2>
+    <table class="a4-approval-table">
+      <thead><tr><th>โลโก้</th><th>ชื่อ</th><th>บริษัท</th><th>สถานะ</th><th></th></tr></thead>
+      <tbody>
+        <% letterheads.forEach(function (lh) { %>
+          <tr>
+            <td>
+              <% if (lh.logoDataUri) { %><img src="<%= lh.logoDataUri %>" alt="" style="width:10mm;height:10mm;object-fit:contain"><% } %>
+              <form method="POST" action="/admin/settings/letterheads/<%= lh._id %>/logo" enctype="multipart/form-data" style="display:inline">
+                <input type="file" name="logo" accept="image/png,image/jpeg,image/webp" style="width:8rem">
+                <button type="submit" class="button secondary">อัปโหลด</button>
+              </form>
+            </td>
+            <td>
+              <form method="POST" action="/admin/settings/letterheads/<%= lh._id %>" style="display:flex;gap:0.25rem;flex-wrap:wrap">
+                <input class="a4-input" style="width:8rem" type="text" name="name" value="<%= lh.name %>">
+                <input class="a4-input" style="width:10rem" type="text" name="companyName" value="<%= lh.companyName %>" placeholder="ชื่อบริษัท">
+                <input class="a4-input" style="width:10rem" type="text" name="address" value="<%= lh.address %>" placeholder="ที่อยู่">
+                <input class="a4-input" style="width:8rem" type="text" name="phone" value="<%= lh.phone %>" placeholder="โทร.">
+                <button type="submit" class="button secondary">บันทึก</button>
+              </form>
+            </td>
+            <td><%= lh.enabled ? 'เปิดใช้' : 'ปิดใช้' %></td>
+            <td>
+              <form method="POST" action="/admin/settings/letterheads/<%= lh._id %>/toggle" style="display:inline">
+                <input type="hidden" name="enabled" value="<%= lh.enabled ? '0' : '1' %>">
+                <button type="submit" class="button secondary"><%= lh.enabled ? 'ปิดใช้' : 'เปิดใช้' %></button>
+              </form>
+              <form method="POST" action="/admin/settings/letterheads/<%= lh._id %>/delete" style="display:inline" onsubmit="return confirm('ลบหัวกระดาษนี้?');">
+                <button type="submit" class="button danger">ลบ</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+        <% if (letterheads.length === 0) { %><tr><td colspan="4" class="a4-save-status">ยังไม่มีหัวกระดาษ</td></tr><% } %>
+      </tbody>
+    </table>
+    <form method="POST" action="/admin/settings/letterheads" style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap">
+      <input class="a4-input" style="width:10rem" type="text" name="name" placeholder="ชื่อหัวกระดาษ (เช่น สำนักงานใหญ่)" required>
+      <input class="a4-input" style="width:12rem" type="text" name="companyName" placeholder="ชื่อบริษัท">
+      <input class="a4-input" style="width:12rem" type="text" name="address" placeholder="ที่อยู่">
+      <input class="a4-input" style="width:8rem" type="text" name="phone" placeholder="โทร.">
+      <button type="submit" class="button">+ เพิ่มหัวกระดาษ</button>
+    </form>
+  </section>
+
+  <section class="action-panel">
+    <h2>ผู้ดูแลฟอร์ม / admin</h2>
+    <p>บทบาทปัจจุบัน:</p>
+    <ul class="file-field-list">
+      <% roledUsers.forEach(function (u) { %>
+        <li><%= u.name %> (<%= u.emp_id %>) — <%= u.roles.join(', ') %></li>
+      <% }) %>
+      <% if (roledUsers.length === 0) { %><li class="a4-save-status">ยังไม่มีใครได้รับบทบาทเพิ่มเติม (นอกจาก ADMIN_EMP_IDS)</li><% } %>
+    </ul>
+
+    <form method="GET" action="/admin/settings" style="margin-top:0.5rem">
+      <input class="a4-input" style="width:16rem" type="text" name="q" value="<%= q %>" placeholder="ค้นชื่อหรือรหัสพนักงาน">
+      <button type="submit" class="button secondary">ค้นหา</button>
+    </form>
+    <% if (searchResults.length > 0) { %>
+      <table class="a4-approval-table" style="margin-top:0.5rem">
+        <thead><tr><th>พนักงาน</th><th colspan="3">บทบาท</th></tr></thead>
+        <tbody>
+          <% searchResults.forEach(function (u) { %>
+            <tr>
+              <td><%= u.name %> (<%= u.emp_id %>)</td>
+              <td colspan="3">
+                <!-- a <form> can't span multiple <td>s (the HTML parser
+                     foster-parents it out of the table) — one form per
+                     row, entirely inside a single cell. -->
+                <form method="POST" action="/admin/settings/roles" style="display:flex;gap:1rem;align-items:center">
+                  <input type="hidden" name="empId" value="<%= u.emp_id %>">
+                  <input type="hidden" name="returnQ" value="<%= q %>">
+                  <label><input type="checkbox" name="roles" value="form_owner" <%= (u.roles||[]).includes('form_owner') ? 'checked' : '' %>> form_owner</label>
+                  <label><input type="checkbox" name="roles" value="admin" <%= (u.roles||[]).includes('admin') ? 'checked' : '' %>> admin</label>
+                  <button type="submit" class="button secondary">บันทึก</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } else if (q) { %>
+      <p class="a4-save-status">ไม่พบพนักงาน</p>
+    <% } %>
+  </section>
+
+  <section class="action-panel">
+    <h2>อีเมล</h2>
+    <p>คิวรออยู่ <%= queuedEmails %> ฉบับ · ส่งไม่สำเร็จ (retry ครบแล้ว) <%= failedEmails %> ฉบับ</p>
+    <% if (testEmailSent) { %><p class="a4-save-status">เข้าคิวส่งอีเมลทดสอบแล้ว — ดูผลได้ในคิว/log อีกสักครู่</p><% } %>
+    <form method="POST" action="/admin/settings/test-email">
+      <button type="submit" class="button">ส่งอีเมลทดสอบถึงฉัน</button>
+    </form>
+  </section>
+
+  <section class="action-panel">
+    <h2>sync ผังองค์กร</h2>
+    <p>
+      sync ล่าสุด: <%= settings.orgSyncedAt ? formatThaiDate(settings.orgSyncedAt, {withTime: true}) : 'ยังไม่เคย' %>
+      · จำนวนพนักงาน: <%= settings.orgSyncedCount || 0 %>
+    </p>
+    <form method="POST" action="/admin/settings/sync">
+      <button type="submit" class="button">sync ทันที</button>
+    </form>
+  </section>
+</main>
+<%- include('partials/foot') %>

@@ -16,13 +16,15 @@
     </label>
     <label>จาก <input class="a4-input" type="date" name="from" value="<%= query.from || '' %>" style="width:auto;display:inline-block"></label>
     <label>ถึง <input class="a4-input" type="date" name="to" value="<%= query.to || '' %>" style="width:auto;display:inline-block"></label>
-    <label>ค้นหาเลขที่ <input class="a4-input" type="text" name="q" value="<%= query.q || '' %>" style="width:auto;display:inline-block"></label>
+    <label>ผู้ยื่น <input class="a4-input" type="text" name="submitter" value="<%= query.submitter || '' %>" style="width:auto;display:inline-block"></label>
+    <label>ค้นหาเลขที่/เรื่อง <input class="a4-input" type="text" name="q" value="<%= query.q || '' %>" style="width:auto;display:inline-block"></label>
     <button type="submit" class="button secondary">กรอง</button>
+    <a href="export.csv?<%= new URLSearchParams(query).toString() %>" class="button secondary">Export CSV</a>
   </form>
 
   <p><%= submissions.total %> รายการ</p>
   <table class="a4-approval-table">
-    <thead><tr><th>เลขที่</th><th>เรื่อง</th><th>ผู้ยื่น</th><th>แผนก</th><th>สถานะ</th><th>ส่งเมื่อ</th></tr></thead>
+    <thead><tr><th>เลขที่</th><th>เรื่อง</th><th>ผู้ยื่น</th><th>แผนก</th><th>สถานะ + ขั้น</th><th>รอมาแล้ว</th><th>ส่งเมื่อ</th><th>จบเมื่อ</th></tr></thead>
     <tbody>
       <% submissions.items.forEach(function (s) { %>
         <tr>
@@ -30,8 +32,19 @@
           <td><%= (s.snapshot && s.snapshot.elements.find(function(e){return e.type==='short_text'})) ? (s.values[s.snapshot.elements.find(function(e){return e.type==='short_text'}).id] || '') : '' %></td>
           <td><%= s.submitter.name %></td>
           <td><%= s.submitter.department ? s.submitter.department.name : '' %></td>
-          <td><span class="inbox-status-badge status-<%= s.status %>"><%= STATUS_LABEL[s.status] %></span></td>
+          <td>
+            <span class="inbox-status-badge status-<%= s.status %>"><%= STATUS_LABEL[s.status] %></span>
+            <% if (s.status === 'pending' && s.current) { %> — <%= s.current.stepName %><% } %>
+          </td>
+          <td>
+            <% if (s.status === 'pending' && s.current) { %>
+              <span class="inbox-waited <%= isOverdue(s) ? 'is-overdue' : '' %>">
+                <% if (isOverdue(s)) { %><span class="overdue-badge">เกินกำหนด</span> <% } %><%= humanizeWaited(s.current.enteredAt) %>
+              </span>
+            <% } else { %>—<% } %>
+          </td>
           <td><%= s.submittedAt ? formatThaiDate(s.submittedAt) : '' %></td>
+          <td><%= s.finishedAt ? formatThaiDate(s.finishedAt) : '' %></td>
         </tr>
       <% }) %>
     </tbody>

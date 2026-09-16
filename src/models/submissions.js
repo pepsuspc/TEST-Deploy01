@@ -15,6 +15,8 @@ import { validateValues } from '../domain/validateField.js';
 import { evaluateStep } from '../domain/evaluateStep.js';
 import { HttpError } from '../lib/httpError.js';
 import { notify, notifyMany } from './notifications.js';
+import { stepEnteredEmail, outcomeEmail } from '../mail/emailTemplates.js';
+import { getLetterheadById } from './letterheads.js';
 
 function collection() {
   return getDb().collection('submissions');
@@ -89,8 +91,12 @@ export function listMySubmissions(empId) {
 
 // §10.7 "/manage/forms/{id}/submissions" — every submission of one form,
 // for its owner. `query` comes straight from req.query: status, from, to
-// (submittedAt range), q (doc number / subject search), page.
-export async function listSubmissionsForForm(formId, query = {}) {
+// (submittedAt range), submitter (name search), q (doc number / เรื่อง
+// search), page. `formElements` (the live form's current elements) locates
+// the first short_text field so `q` can also search เรื่อง, not just the
+// doc number — passed in rather than looked up here since every call site
+// already has the form loaded.
+function buildFormSubmissionsFilter(formId, query, formElements = []) {
   const filter = { formId };
   if (query.status) filter.status = query.status;
   if (query.from || query.to) {
@@ -98,9 +104,20 @@ export async function listSubmissionsForForm(formId, query = {}) {
     if (query.from) filter.submittedAt.$gte = new Date(query.from);
     if (query.to) filter.submittedAt.$lte = new Date(`${query.to}T23:59:59.999Z`);
   }
-  if (query.q) {
-    filter.$or = [{ docNumber: { $regex: escapeRegex(query.q), $options: 'i' } }];
+  if (query.submitter) {
+    filter['submitter.name'] = { $regex: escapeRegex(query.submitter), $options: 'i' };
   }
+  if (query.q) {
+    const or = [{ docNumber: { $regex: escapeRegex(query.q), $options: 'i' } }];
+    const firstShortText = formElements.find((el) => el.type === 'short_text');
+    if (firstShortText) or.push({ [`values.${firstShortText.id}`]: { $regex: escapeRegex(query.q), $options: 'i' } });
+    filter.$or = or;
+  }
+  return filter;
+}
+
+export async function listSubmissionsForForm(formId, query = {}, formElements = []) {
+  const filter = buildFormSubmissionsFilter(formId, query, formElements);
   const page = Math.max(1, Number(query.page) || 1);
   const pageSize = 50;
   const cursor = collection()
@@ -110,6 +127,12 @@ export async function listSubmissionsForForm(formId, query = {}) {
     .limit(pageSize);
   const [items, total] = await Promise.all([cursor.toArray(), collection().countDocuments(filter)]);
   return { items, total, page, pageSize, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+}
+
+// §10.7's CSV export — same filters, no pagination (every matching row).
+export function listAllSubmissionsForForm(formId, query = {}, formElements = []) {
+  const filter = buildFormSubmissionsFilter(formId, query, formElements);
+  return collection().find(filter).sort({ submittedAt: -1 }).toArray();
 }
 
 function escapeRegex(str) {
@@ -129,6 +152,13 @@ export function listPendingForApprover(empId) {
 
 export function isOverdue(submission, now = new Date()) {
   return Boolean(submission.current?.deadlineAt) && now > submission.current.deadlineAt;
+}
+
+// §9.1's last row + the 08:00 digest (src/mail/digest.js) — every pending
+// submission currently past its step deadline, regardless of who it's
+// waiting on.
+export function listOverduePending(now = new Date()) {
+  return collection().find({ status: 'pending', 'current.deadlineAt': { $lt: now } }).toArray();
 }
 
 // §10.1: "เรื่อง (ฟิลด์ short_text ตัวแรกบนกระดาษ)" — the first short_text
@@ -159,13 +189,18 @@ export async function formContextFor(submission) {
     return {
       elements: submission.snapshot.elements,
       formName: submission.snapshot.formName,
-      letterheadId: submission.snapshot.letterheadId ?? null,
+      letterhead: await getLetterheadById(submission.snapshot.letterheadId),
       workflowSteps: submission.snapshot.workflow?.steps ?? [],
     };
   }
   const form = await getFormById(submission.formId);
-  if (!form) return { elements: [], formName: '(ไม่พบฟอร์ม)', letterheadId: null, workflowSteps: [] };
-  return { elements: form.elements, formName: form.name, letterheadId: form.letterheadId, workflowSteps: form.workflow.steps };
+  if (!form) return { elements: [], formName: '(ไม่พบฟอร์ม)', letterhead: null, workflowSteps: [] };
+  return {
+    elements: form.elements,
+    formName: form.name,
+    letterhead: await getLetterheadById(form.letterheadId),
+    workflowSteps: form.workflow.steps,
+  };
 }
 
 // §10.3: "ถ้าสายอนุมัติมี submitter_choice แสดงช่องเลือกคนตรงนี้ก่อนส่ง"
@@ -460,11 +495,20 @@ export async function submitDraft(id, empId, { values, expectedVersion, submitte
   if (!result) throw new HttpError(409, 'คำร้องนี้เพิ่งมีการเปลี่ยนแปลง กรุณาโหลดหน้าใหม่');
 
   // §9.1: "คำร้องมาถึงขั้นของคุณ" -> every approver of the newly-entered step.
+  // Email too (✔ ทันที) — the one row of §9.1's table this event needs it for.
+  const submitSubjText = await subjectText(result);
   await notifyMany(steps[0].approvers.map((a) => a.emp_id), {
     type: 'step_entered',
     subject: `${result.docNumber} รอคุณอนุมัติ`,
-    body: `${result.submitter.name} ส่ง "${await subjectText(result)}" มาให้คุณตรวจ`,
+    body: `${result.submitter.name} ส่ง "${submitSubjText}" มาให้คุณตรวจ`,
     link: `/submissions/${result._id}`,
+    email: stepEnteredEmail({
+      formName: result.snapshot.formName,
+      subjText: submitSubjText,
+      submitterName: result.submitter.name,
+      stepName: steps[0].name,
+      submissionId: result._id,
+    }),
   });
 
   return { ok: true, submission: result };
@@ -637,7 +681,10 @@ export async function decideStep(id, empId, action, { comment = '', now = new Da
 // about it only when the workflow actually moves to them.
 async function sendDecideNotifications(submission, action, outcome, completedStepName, nextStep) {
   const link = `/submissions/${submission._id}`;
-  const subjectLine = `${submission.docNumber} — ${await subjectText(submission)}`;
+  const subjText = await subjectText(submission);
+  const subjectLine = `${submission.docNumber} — ${subjText}`;
+  const formName = submission.snapshot.formName;
+  const emailCtx = { formName, subjText, submissionId: submission._id, docNumber: submission.docNumber };
 
   if (action === 'return') {
     await notify(submission.submitter.emp_id, {
@@ -645,6 +692,7 @@ async function sendDecideNotifications(submission, action, outcome, completedSte
       subject: `${subjectLine} ถูกส่งกลับแก้ไข`,
       body: 'กรุณาแก้ไขและส่งใหม่',
       link,
+      email: outcomeEmail('returned', emailCtx),
     });
     return;
   }
@@ -654,6 +702,7 @@ async function sendDecideNotifications(submission, action, outcome, completedSte
       subject: `${subjectLine} ไม่อนุมัติ`,
       body: '',
       link,
+      email: outcomeEmail('rejected', emailCtx),
     });
   } else if (outcome === 'passed-final') {
     await notify(submission.submitter.emp_id, {
@@ -661,6 +710,7 @@ async function sendDecideNotifications(submission, action, outcome, completedSte
       subject: `${subjectLine} อนุมัติครบแล้ว`,
       body: '',
       link,
+      email: outcomeEmail('approved', emailCtx),
     });
   } else if (outcome === 'passed-advance' && nextStep) {
     await notify(submission.submitter.emp_id, {
@@ -674,6 +724,13 @@ async function sendDecideNotifications(submission, action, outcome, completedSte
       subject: `${subjectLine} รอคุณอนุมัติ`,
       body: `${submission.submitter.name} ส่งคำร้องมาถึงขั้นของคุณแล้ว`,
       link,
+      email: stepEnteredEmail({
+        formName,
+        subjText,
+        submitterName: submission.submitter.name,
+        stepName: nextStep.name,
+        submissionId: submission._id,
+      }),
     });
   }
 }

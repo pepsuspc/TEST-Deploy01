@@ -10,6 +10,20 @@ export function buddhistYear(date = new Date(), timeZone = BANGKOK_TZ) {
   return gregorianYear + 543;
 }
 
+// "2026-09-16" in Bangkok wall-clock time — a once-per-day scheduling key
+// (§9.1's 08:00 overdue digest) that survives a process restart, unlike an
+// in-memory "did we run today" flag.
+export function bangkokDateKey(date = new Date(), timeZone = BANGKOK_TZ) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
+  const get = (type) => parts.find((p) => p.type === type)?.value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+export function bangkokHour(date = new Date(), timeZone = BANGKOK_TZ) {
+  // Some ICU builds render midnight as "24" under hour12:false — normalize.
+  return Number(new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', hour12: false }).format(date)) % 24;
+}
+
 // "14 ก.ย. 2569" — the format §3.6 picks (the doc allows either that or
 // 14/09/2569; we standardize on this one everywhere).
 const THAI_MONTHS_SHORT = [

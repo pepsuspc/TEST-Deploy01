@@ -14,7 +14,10 @@ import {
   cloneForm,
   isFormOwner,
 } from '../models/forms.js';
-import { listSubmissionsForForm } from '../models/submissions.js';
+import { listSubmissionsForForm, listAllSubmissionsForForm, isOverdue } from '../models/submissions.js';
+import { getLetterheadById, listLetterheads } from '../models/letterheads.js';
+import { buildSubmissionsCsv } from '../domain/csvExport.js';
+import { humanizeWaited } from '../domain/humanizeDuration.js';
 import { orgApi } from '../org/client.js';
 import { FIELD_TYPES, AUTO_SOURCES, defaultPropsFor } from '../domain/fieldTypes.js';
 import { buildSampleSubmission } from '../domain/sampleValues.js';
@@ -145,11 +148,13 @@ manageFormsRouter.post(
     const form = await loadOwnedForm(req);
     const elements = JSON.parse(req.body.elements || '[]');
     const submission = buildSampleSubmission({ formName: form.name, elements });
+    const letterhead = await getLetterheadById(form.letterheadId);
     res.render('memo-a4', {
       mode: 'view',
       submission,
       elements,
       formName: form.name,
+      letterhead,
       errors: {},
       user: req.user,
       canDecide: false,
@@ -164,22 +169,30 @@ manageFormsRouter.get(
   '/:id/settings',
   asyncHandler(async (req, res) => {
     const form = await loadOwnedForm(req);
-    const departments = await orgApi.departments();
-    res.render('form-settings', { form, departments, user: req.user, tab: 'settings' });
+    const [departments, employees, letterheads] = await Promise.all([
+      orgApi.departments(),
+      orgApi.allEmployees({ active: '1' }),
+      listLetterheads(),
+    ]);
+    res.render('form-settings', { form, departments, employees, letterheads, user: req.user, tab: 'settings' });
   }),
 );
 
 manageFormsRouter.post(
   '/:id/settings',
   asyncHandler(async (req, res) => {
-    const { name, category, description, allowAllDepartments } = req.body;
+    const { name, category, description, allowAllDepartments, letterheadId } = req.body;
     const rawAllowed = req.body.allowedDepartmentIds;
     const selected = Array.isArray(rawAllowed) ? rawAllowed : rawAllowed ? [rawAllowed] : [];
+    const rawCoOwners = req.body.coOwnerEmpIds;
+    const coOwners = Array.isArray(rawCoOwners) ? rawCoOwners : rawCoOwners ? [rawCoOwners] : [];
     await updateFormMeta(req.params.id, req.user.emp_id, {
       name,
       category,
       description,
+      letterheadId: letterheadId || null,
       allowedDepartmentIds: allowAllDepartments === 'on' ? [] : selected,
+      coOwnerEmpIds: [...new Set(coOwners.filter(Boolean))],
     });
     res.redirect(`/manage/forms/${req.params.id}/settings`);
   }),
@@ -246,7 +259,27 @@ manageFormsRouter.get(
   '/:id/submissions',
   asyncHandler(async (req, res) => {
     const form = await loadOwnedForm(req);
-    const submissions = await listSubmissionsForForm(form._id.toString(), req.query);
-    res.render('form-submissions', { form, submissions, user: req.user, query: req.query });
+    const submissions = await listSubmissionsForForm(form._id.toString(), req.query, form.elements);
+    res.render('form-submissions', { form, submissions, user: req.user, query: req.query, isOverdue, humanizeWaited });
+  }),
+);
+
+manageFormsRouter.get(
+  '/:id/submissions/export.csv',
+  asyncHandler(async (req, res) => {
+    const form = await loadOwnedForm(req);
+    const submissions = await listAllSubmissionsForForm(form._id.toString(), req.query, form.elements);
+    const csv = buildSubmissionsCsv(form.elements, submissions);
+    await writeAuditLog({
+      actorEmpId: req.user.emp_id,
+      actorName: req.user.name,
+      action: 'export_csv',
+      entityType: 'form',
+      entityId: form._id.toString(),
+      summary: `${req.user.name} ส่งออก CSV คำร้องของฟอร์ม "${form.name}" (${submissions.length} รายการ)`,
+    });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${form.docPrefix}-submissions.csv"`);
+    res.send('﻿' + csv); // BOM so Excel opens Thai text correctly
   }),
 );

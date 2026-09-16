@@ -14,6 +14,7 @@ import { inboxRouter } from './routes/inbox.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
 import { filesRouter } from './routes/files.routes.js';
 import { formsRouter, manageFormsRouter } from './routes/forms.routes.js';
+import { adminRouter } from './routes/admin.routes.js';
 import { HttpError } from './lib/httpError.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -55,6 +56,7 @@ export function createApp() {
   app.use('/files', filesRouter);
   app.use('/forms', formsRouter);
   app.use('/manage/forms', manageFormsRouter);
+  app.use('/admin', adminRouter);
 
   app.use((req, res) => {
     res.status(404).render('error', { status: 404, message: 'ไม่พบหน้านี้' });
