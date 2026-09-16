@@ -343,3 +343,22 @@ a { color: var(--color-primary); }
 .props-field textarea { min-height: 3rem; }
 .props-options-row { display: flex; gap: 0.3rem; margin-bottom: 0.3rem; }
 .props-options-row input { flex: 1; }
+
+/* Employee search widget */
+.emp-search { position: relative; display: inline-block; }
+.emp-search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.emp-search-item { padding: 0.4rem 0.6rem; cursor: pointer; font-size: 0.85rem; }
+.emp-search-item:hover { background: #f0f2f5; }
+.emp-search-empty { padding: 0.4rem 0.6rem; font-size: 0.85rem; color: var(--color-text-muted); }

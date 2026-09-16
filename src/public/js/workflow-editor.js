@@ -180,16 +180,9 @@
     function renderDetail() {
       detailWrap.innerHTML = '';
       if (typeSelect.value === 'user') {
-        const sel = document.createElement('select');
-        sel.className = 'a4-input';
-        sel.style.width = 'auto';
-        INIT.employees.forEach((e) => {
-          const opt = document.createElement('option');
-          opt.value = e.emp_id;
-          opt.textContent = e.name + (e.department ? ' — ' + e.department.name : '');
-          sel.appendChild(opt);
-        });
-        detailWrap.appendChild(sel);
+        const searchRoot = document.createElement('span');
+        createEmployeeSearch(searchRoot, INIT.employees, { placeholder: 'พิมพ์ชื่อพนักงาน…' });
+        detailWrap.appendChild(searchRoot);
       } else if (typeSelect.value === 'submitter_choice') {
         const labelInput = document.createElement('input');
         labelInput.type = 'text';
@@ -210,8 +203,9 @@
     addBtn.addEventListener('click', () => {
       let approver;
       if (typeSelect.value === 'user') {
-        const sel = detailWrap.querySelector('select');
-        approver = { type: 'user', emp_id: sel.value };
+        const hidden = detailWrap.querySelector('input[type="hidden"]');
+        if (!hidden || !hidden.value) return alert('กรุณาเลือกพนักงานจากรายการที่ค้นหา');
+        approver = { type: 'user', emp_id: hidden.value };
       } else if (typeSelect.value === 'relative:chief') {
         approver = { type: 'relative', relation: 'chief' };
       } else if (typeSelect.value === 'relative:department_head') {

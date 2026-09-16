@@ -37,17 +37,13 @@ const errs = typeof errors === 'undefined' ? {} : errors;
         <% submitterChoiceSlots.forEach(function (slot) { %>
           <% const chosen = (submission.submitterChoices && submission.submitterChoices[slot.stepId] && submission.submitterChoices[slot.stepId][0]) || ''; %>
           <div class="props-field">
-            <label for="choice_<%= slot.stepId %>"><%= slot.label %> (ขั้น "<%= slot.stepName %>")</label>
-            <select id="choice_<%= slot.stepId %>" name="submitterChoices[<%= slot.stepId %>][]" class="a4-input" form="memo-form">
-              <option value="">— เลือก —</option>
-              <% choiceEmployees.forEach(function (emp) { %>
-                <% if (!slot.restrictDepartment || (emp.department && emp.department.id === slot.restrictDepartment)) { %>
-                  <option value="<%= emp.emp_id %>" <%= chosen === emp.emp_id ? 'selected' : '' %>>
-                    <%= emp.name %><%= emp.department ? ' — ' + emp.department.name : '' %>
-                  </option>
-                <% } %>
-              <% }) %>
-            </select>
+            <label><%= slot.label %> (ขั้น "<%= slot.stepName %>")</label>
+            <div id="choice_<%= slot.stepId %>"
+                 data-emp-search
+                 data-name="submitterChoices[<%= slot.stepId %>][]"
+                 data-form="memo-form"
+                 data-initial="<%= chosen %>"
+                 data-restrict-department="<%= slot.restrictDepartment || '' %>"></div>
           </div>
         <% }) %>
       </div>
@@ -68,6 +64,7 @@ const errs = typeof errors === 'undefined' ? {} : errors;
         </form>
       <% } %>
       <button type="button" class="button secondary" onclick="window.print()">พิมพ์</button>
+      <button type="button" class="button secondary" id="btn-print-history">พิมพ์พร้อมประวัติ</button>
     </div>
 
     <% if (canDecide) { %>
@@ -298,12 +295,42 @@ const errs = typeof errors === 'undefined' ? {} : errors;
 
   <% if (mode === 'view') { %>
     <%- include('partials/timeline', { timeline, submission, user }) %>
+    <script>
+      (function () {
+        var btn = document.getElementById('btn-print-history');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+          var openedByUs = [];
+          document.querySelectorAll('.timeline-round-details:not([open])').forEach(function (d) {
+            d.setAttribute('open', '');
+            openedByUs.push(d);
+          });
+          document.body.classList.add('print-with-history');
+          window.print();
+          document.body.classList.remove('print-with-history');
+          openedByUs.forEach(function (d) { d.removeAttribute('open'); });
+        });
+      })();
+    </script>
   <% } %>
 </main>
 <% if (mode === 'edit') { %>
   <script src="/js/autosave.js"></script>
   <script src="/js/file-field.js"></script>
   <script src="/js/table-field.js"></script>
+  <script src="/js/employee-search.js"></script>
+  <% if (typeof choiceEmployees !== 'undefined' && choiceEmployees.length > 0) { %>
+    <script>
+      (function () {
+        var EMPLOYEES = <%- JSON.stringify(choiceEmployees) %>;
+        document.querySelectorAll('[data-emp-search]').forEach(function (el) {
+          var restrict = el.dataset.restrictDepartment;
+          var list = restrict ? EMPLOYEES.filter(function (e) { return e.department && e.department.id === restrict; }) : EMPLOYEES;
+          createEmployeeSearch(el, list, { name: el.dataset.name, form: el.dataset.form, initialEmpId: el.dataset.initial || null });
+        });
+      })();
+    </script>
+  <% } %>
   <script src="/js/submit-confirm.js"></script>
 <% } %>
 <%- include('partials/foot') %>

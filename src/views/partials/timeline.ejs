@@ -1,26 +1,30 @@
+<%
+// §10.4: "ไทม์ไลน์ทุกเหตุการณ์ทุกรอบ ... รอบเก่าย่อ" — older rounds
+// collapse into a <details>, the latest round (plus comments, which
+// aren't round-scoped in the data model — §11.3's `comments` sits
+// alongside `rounds`, not inside one) stays expanded.
+const roundNums = [...new Set(timeline.filter((e) => e.round).map((e) => e.round))].sort((a, b) => a - b);
+const latestRound = roundNums[roundNums.length - 1];
+const oldRounds = roundNums.filter((r) => r !== latestRound);
+const currentEvents = timeline.filter((e) => !e.round || e.round === latestRound);
+%>
 <section class="timeline-panel no-print">
   <h2>ไทม์ไลน์</h2>
+
+  <% oldRounds.forEach(function (r) { %>
+    <details class="timeline-round-details">
+      <summary>รอบที่ <%= r %> (ย่อ — คลิกเพื่อดู)</summary>
+      <ul class="timeline-list">
+        <% timeline.filter(function (e) { return e.round === r; }).forEach(function (ev) { %>
+          <%- include('timeline-event', { ev }) %>
+        <% }) %>
+      </ul>
+    </details>
+  <% }) %>
+
   <ul class="timeline-list">
-    <% timeline.forEach(function (ev) { %>
-      <li class="timeline-item timeline-<%= ev.kind %><%= ev.recalled ? ' is-recalled' : '' %>">
-        <div class="timeline-time"><%= formatThaiDate(ev.at, { withTime: true }) %></div>
-        <div class="timeline-body">
-          <% if (ev.kind === 'submitted') { %>
-            <strong><%= ev.actorName %></strong> <%= ev.text %>
-          <% } else if (ev.kind === 'decision') { %>
-            <strong><%= ev.actorName %></strong> <%= ev.actionLabel %> (<%= ev.stepName %>)
-            <% if (ev.recalled) { %><span class="timeline-tag">ถูกดึงกลับ</span><% } %>
-            <% if (ev.comment) { %><div class="timeline-comment">“<%= ev.comment %>”</div><% } %>
-          <% } else if (ev.kind === 'recalled') { %>
-            <strong><%= ev.actorName %></strong> ดึงกลับการกระทำที่ขั้น <%= ev.stepName %>
-          <% } else if (ev.kind === 'comment') { %>
-            <strong><%= ev.actorName %></strong> แสดงความเห็น
-            <div class="timeline-comment">“<%= ev.text %>”</div>
-          <% } else if (ev.kind === 'cancelled') { %>
-            <strong><%= ev.actorName %></strong> ยกเลิกคำร้อง
-          <% } %>
-        </div>
-      </li>
+    <% currentEvents.forEach(function (ev) { %>
+      <%- include('timeline-event', { ev }) %>
     <% }) %>
     <% if (timeline.length === 0) { %>
       <li class="timeline-empty">ยังไม่มีเหตุการณ์</li>
