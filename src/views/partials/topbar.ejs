@@ -4,6 +4,14 @@
     <a href="/inbox">กล่องงาน</a>
   </nav>
   <div class="topbar-user">
+    <div class="notif-wrap">
+      <button type="button" id="notif-bell" class="link-button" aria-label="การแจ้งเตือน">
+        🔔<span id="notif-count" class="notif-count" hidden></span>
+      </button>
+      <div id="notif-panel" class="notif-panel" hidden>
+        <ul id="notif-list" class="notif-list"></ul>
+      </div>
+    </div>
     <span class="topbar-user-name">
       <%= user.name %><% if (user.nickname) { %> (<%= user.nickname %>)<% } %>
     </span>
@@ -13,3 +21,4 @@
     </form>
   </div>
 </header>
+<script src="/js/notifications.js"></script>

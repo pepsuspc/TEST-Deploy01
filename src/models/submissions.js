@@ -19,6 +19,7 @@ import {
   MEMO_STEPS,
 } from '../domain/memoFormDef.js';
 import { HttpError } from '../lib/httpError.js';
+import { notify, notifyMany } from './notifications.js';
 
 function collection() {
   return getDb().collection('submissions');
@@ -233,6 +234,15 @@ export async function submitDraft(id, empId, { values, expectedVersion } = {}) {
   );
 
   if (!result) throw new HttpError(409, 'คำร้องนี้เพิ่งมีการเปลี่ยนแปลง กรุณาโหลดหน้าใหม่');
+
+  // §9.1: "คำร้องมาถึงขั้นของคุณ" -> every approver of the newly-entered step.
+  await notifyMany(steps[0].approvers.map((a) => a.emp_id), {
+    type: 'step_entered',
+    subject: `${result.docNumber} รอคุณอนุมัติ`,
+    body: `${result.submitter.name} ส่ง "${subjectText(result)}" มาให้คุณตรวจ`,
+    link: `/submissions/${result._id}`,
+  });
+
   return { ok: true, submission: result };
 }
 
@@ -327,6 +337,8 @@ export async function decideStep(id, empId, action, { comment = '', now = new Da
   const decisionPath = `rounds.${roundIdx}.steps.${stepIdx}.decisions`;
 
   let setFields = { updatedAt: now };
+  let outcome = null; // 'waiting' | 'failed' | 'passed-advance' | 'passed-final', for notifications below
+  let nextStep = null;
 
   if (action === 'return') {
     // §8.5: takes effect immediately, no need to wait for quorum.
@@ -338,7 +350,7 @@ export async function decideStep(id, empId, action, { comment = '', now = new Da
       [`rounds.${roundIdx}.endedBy`]: 'returned',
     };
   } else {
-    const outcome = evaluateStep(step, [...step.decisions, decision]);
+    outcome = evaluateStep(step, [...step.decisions, decision]);
     if (outcome === 'waiting') {
       // nothing else changes — still waiting on the rest of this step's quorum
     } else if (outcome === 'failed') {
@@ -353,8 +365,9 @@ export async function decideStep(id, empId, action, { comment = '', now = new Da
     } else {
       // 'passed' — either advance to the next step, or finish the workflow.
       const nextStepIdx = stepIdx + 1;
-      const nextStep = submission.rounds[roundIdx].steps[nextStepIdx];
+      nextStep = submission.rounds[roundIdx].steps[nextStepIdx];
       if (nextStep) {
+        outcome = 'passed-advance';
         setFields = {
           ...setFields,
           [`rounds.${roundIdx}.steps.${nextStepIdx}.enteredAt`]: now,
@@ -369,6 +382,7 @@ export async function decideStep(id, empId, action, { comment = '', now = new Da
           },
         };
       } else {
+        outcome = 'passed-final';
         setFields = {
           ...setFields,
           status: 'approved',
@@ -387,7 +401,55 @@ export async function decideStep(id, empId, action, { comment = '', now = new Da
     { returnDocument: 'after' },
   );
   if (!result) throw new HttpError(409, 'คำร้องนี้เพิ่งมีการเปลี่ยนแปลง กรุณาโหลดหน้าใหม่');
+
+  await sendDecideNotifications(result, action, outcome, step.name, nextStep);
   return result;
+}
+
+// §9.1's rows for a decision's outcome: the submitter always hears about
+// it (advance, final result, or return); the next step's approvers hear
+// about it only when the workflow actually moves to them.
+async function sendDecideNotifications(submission, action, outcome, completedStepName, nextStep) {
+  const link = `/submissions/${submission._id}`;
+  const subjectLine = `${submission.docNumber} — ${subjectText(submission)}`;
+
+  if (action === 'return') {
+    await notify(submission.submitter.emp_id, {
+      type: 'returned',
+      subject: `${subjectLine} ถูกส่งกลับแก้ไข`,
+      body: 'กรุณาแก้ไขและส่งใหม่',
+      link,
+    });
+    return;
+  }
+  if (outcome === 'failed') {
+    await notify(submission.submitter.emp_id, {
+      type: 'rejected',
+      subject: `${subjectLine} ไม่อนุมัติ`,
+      body: '',
+      link,
+    });
+  } else if (outcome === 'passed-final') {
+    await notify(submission.submitter.emp_id, {
+      type: 'approved',
+      subject: `${subjectLine} อนุมัติครบแล้ว`,
+      body: '',
+      link,
+    });
+  } else if (outcome === 'passed-advance' && nextStep) {
+    await notify(submission.submitter.emp_id, {
+      type: 'step_advanced',
+      subject: `${subjectLine} ผ่านขั้น "${completedStepName}" แล้ว`,
+      body: `กำลังรอ "${nextStep.name}"`,
+      link,
+    });
+    await notifyMany(nextStep.approvers.map((a) => a.emp_id), {
+      type: 'step_entered',
+      subject: `${subjectLine} รอคุณอนุมัติ`,
+      body: `${submission.submitter.name} ส่งคำร้องมาถึงขั้นของคุณแล้ว`,
+      link,
+    });
+  }
 }
 
 // §8.4: "คนที่กระทำล่าสุด ถอนได้ ตราบใดที่คนถัดไปยังไม่ได้กระทำ" — the
@@ -423,6 +485,14 @@ export async function recallDecision(id, empId, { now = new Date(), expectedVers
         { returnDocument: 'after' },
       );
       if (!result) throw new HttpError(409, 'คำร้องนี้เพิ่งมีการเปลี่ยนแปลง กรุณาโหลดหน้าใหม่');
+      // §9.1: "มีคนดึงกลับคำร้องที่คุณกำลังจะกด" -> the step-0 approvers who
+      // just lost it from their queue.
+      await notifyMany(step0.approvers.map((a) => a.emp_id), {
+        type: 'recalled_from_queue',
+        subject: `${result.docNumber || ''} ถูกดึงกลับโดยผู้ยื่น`,
+        body: '',
+        link: `/submissions/${result._id}`,
+      });
       return result;
     }
   }
@@ -471,6 +541,16 @@ export async function recallDecision(id, empId, { now = new Date(), expectedVers
       },
     );
     if (!result) throw new HttpError(409, 'คำร้องนี้เพิ่งมีการเปลี่ยนแปลง กรุณาโหลดหน้าใหม่');
+    // §9.1: notify whoever had it in their queue right before this recall
+    // (a later step's approvers) that it's gone from their queue now.
+    if (submission.current.stepIndex !== stepIdx) {
+      await notifyMany(submission.current.approverEmpIds, {
+        type: 'recalled_from_queue',
+        subject: `${result.docNumber || ''} ถูกดึงกลับ`,
+        body: '',
+        link: `/submissions/${result._id}`,
+      });
+    }
     return result;
   }
 
@@ -496,6 +576,81 @@ export async function cancelSubmission(id, empId, { now = new Date(), expectedVe
   return result;
 }
 
+const DECISION_ACTION_LABEL = {
+  approve: 'อนุมัติ',
+  reject: 'ไม่อนุมัติ',
+  return: 'ส่งกลับแก้ไข',
+};
+
+function approverName(step, empId) {
+  return step.approvers.find((a) => a.emp_id === empId)?.name ?? empId;
+}
+
+// §10.4: "ไทม์ไลน์ ทุกเหตุการณ์ทุกรอบ" — flatten every round's submit,
+// every decision (including ones later recalled — kept, just marked), and
+// every comment into one chronological list.
+export function buildTimeline(submission) {
+  const events = [];
+
+  submission.rounds.forEach((round) => {
+    events.push({
+      at: round.submittedAt,
+      kind: 'submitted',
+      round: round.round,
+      actorName: submission.submitter.name,
+      text: round.round === 1 ? 'ส่งคำร้อง' : `ส่งใหม่ (รอบที่ ${round.round})`,
+    });
+    round.steps.forEach((step) => {
+      step.decisions.forEach((d) => {
+        events.push({
+          at: d.at,
+          kind: 'decision',
+          round: round.round,
+          actorName: approverName(step, d.emp_id),
+          stepName: step.name,
+          actionLabel: DECISION_ACTION_LABEL[d.action] ?? d.action,
+          comment: d.comment,
+          recalled: Boolean(d.recalledAt),
+        });
+        if (d.recalledAt) {
+          events.push({
+            at: d.recalledAt,
+            kind: 'recalled',
+            round: round.round,
+            actorName: approverName(step, d.emp_id),
+            stepName: step.name,
+          });
+        }
+      });
+    });
+    if (round.endedBy === 'rejected' || round.endedBy === 'approved') {
+      // Already implied by the last decision event above — nothing extra
+      // to add, kept as a branch for clarity/future round-end reasons.
+    }
+  });
+
+  (submission.comments ?? []).forEach((c) => {
+    events.push({ at: c.at, kind: 'comment', actorName: c.name, text: c.text });
+  });
+
+  if (submission.status === 'cancelled' && submission.finishedAt) {
+    events.push({ at: submission.finishedAt, kind: 'cancelled', actorName: submission.submitter.name });
+  }
+
+  events.sort((a, b) => new Date(a.at) - new Date(b.at));
+  return events;
+}
+
+function relatedEmpIds(submission) {
+  const ids = new Set([submission.submitter.emp_id]);
+  for (const round of submission.rounds ?? []) {
+    for (const step of round.steps ?? []) {
+      for (const a of step.approvers) ids.add(a.emp_id);
+    }
+  }
+  return ids;
+}
+
 export async function addComment(id, empId, name, text, { now = new Date() } = {}) {
   const trimmed = text.trim();
   if (trimmed.length === 0) throw new HttpError(400, 'กรุณากรอกความเห็น');
@@ -506,4 +661,13 @@ export async function addComment(id, empId, name, text, { now = new Date() } = {
     { _id: submission._id },
     { $push: { comments: { emp_id: empId, name, text: trimmed, at: now } }, $set: { updatedAt: now } },
   );
+
+  // §9.1: "มีความเห็นใหม่" -> everyone involved, except whoever just wrote it.
+  const recipients = [...relatedEmpIds(submission)].filter((e) => e !== empId);
+  await notifyMany(recipients, {
+    type: 'comment',
+    subject: `ความเห็นใหม่ใน ${submission.docNumber || subjectText(submission)}`,
+    body: `${name}: ${trimmed}`,
+    link: `/submissions/${submission._id}`,
+  });
 }

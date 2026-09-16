@@ -10,6 +10,7 @@ import { findUserByEmpId } from './models/users.js';
 import { formatThaiDate } from './domain/thaiDate.js';
 import { STATUS_LABEL } from './domain/statusLabels.js';
 import { inboxRouter } from './routes/inbox.routes.js';
+import { notificationsRouter } from './routes/notifications.routes.js';
 import { HttpError } from './lib/httpError.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -45,6 +46,7 @@ export function createApp() {
 
   app.use('/submissions', submissionsRouter);
   app.use('/inbox', inboxRouter);
+  app.use('/notifications', notificationsRouter);
 
   app.use((req, res) => {
     res.status(404).render('error', { status: 404, message: 'ไม่พบหน้านี้' });

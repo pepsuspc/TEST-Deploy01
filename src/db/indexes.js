@@ -10,7 +10,8 @@ export async function ensureIndexes(db) {
   await db.collection('users').createIndex({ emp_id: 1 }, { unique: true });
   await db.collection('files').createIndex({ submissionId: 1 });
   await db.collection('files').createIndex({ uploadedAt: 1 });
-  await db.collection('notifications').createIndex({ status: 1, createdAt: 1 });
+  await db.collection('notifications').createIndex({ status: 1, createdAt: 1 }); // spec E.3, for the future email queue worker
+  await db.collection('notifications').createIndex({ to: 1, createdAt: -1 }); // this app's own "my notifications" query
   await db.collection('audit_logs').createIndex({ at: -1 });
   await db.collection('counters').createIndex({ _id: 1 });
 }

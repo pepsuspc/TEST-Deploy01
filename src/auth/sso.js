@@ -11,6 +11,7 @@ import { env } from '../config/env.js';
 import { orgApi } from '../org/client.js';
 import { upsertUserFromOrg } from '../models/users.js';
 import { startSession } from './session.js';
+import { writeAuditLog } from '../models/auditLog.js';
 
 export const ssoAuthRouter = Router();
 
@@ -91,12 +92,31 @@ ssoAuthRouter.get('/callback', async (req, res) => {
 
   await upsertUserFromOrg(emp, { adminEmpIds: env.adminEmpIds, touchLastLogin: true });
   startSession(req, userInfo.emp_id);
+  await writeAuditLog({
+    actorEmpId: userInfo.emp_id,
+    actorName: emp.name,
+    action: 'login_sso',
+    entityType: 'user',
+    entityId: userInfo.emp_id,
+    summary: `${emp.name} เข้าสู่ระบบ (SSO)`,
+  });
   res.redirect('/');
 });
 
 // POST /auth/logout — §5.5
-ssoAuthRouter.post('/logout', (req, res) => {
+ssoAuthRouter.post('/logout', async (req, res) => {
+  const empId = req.session?.emp_id;
   req.session = null;
+  if (empId) {
+    await writeAuditLog({
+      actorEmpId: empId,
+      actorName: empId,
+      action: 'logout',
+      entityType: 'user',
+      entityId: empId,
+      summary: `${empId} ออกจากระบบ`,
+    });
+  }
   const url = new URL('/system81/logout', env.sellcenterUrl);
   url.searchParams.set('redirect_uri', env.appUrl);
   res.redirect(url.toString());

@@ -14,8 +14,10 @@ import {
   canDecide,
   canRecall,
   canCancel,
+  buildTimeline,
 } from '../models/submissions.js';
 import { HttpError } from '../lib/httpError.js';
+import { writeAuditLog } from '../models/auditLog.js';
 
 export const submissionsRouter = Router();
 
@@ -73,6 +75,10 @@ submissionsRouter.post(
     res.redirect(`/submissions/${updated._id}/edit`);
   }),
 );
+// (save-draft is autosaved every few seconds — logging every tick would
+// flood audit_logs with noise nobody would ever read; submit/decide/
+// recall/cancel/comment below are the meaningful, infrequent actions §12
+// actually cares about seeing a trail of.)
 
 submissionsRouter.post(
   '/:id/submit',
@@ -89,6 +95,14 @@ submissionsRouter.post(
         user: req.user,
       });
     }
+    await writeAuditLog({
+      actorEmpId: req.user.emp_id,
+      actorName: req.user.name,
+      action: 'submit',
+      entityType: 'submission',
+      entityId: req.params.id,
+      summary: `${req.user.name} ส่งคำร้อง ${result.submission.docNumber}`,
+    });
     res.redirect(`/submissions/${result.submission._id}`);
   }),
 );
@@ -97,6 +111,14 @@ submissionsRouter.post(
   '/:id/delete',
   asyncHandler(async (req, res) => {
     await deleteDraft(req.params.id, req.user.emp_id);
+    await writeAuditLog({
+      actorEmpId: req.user.emp_id,
+      actorName: req.user.name,
+      action: 'delete_draft',
+      entityType: 'submission',
+      entityId: req.params.id,
+      summary: `${req.user.name} ลบร่าง`,
+    });
     res.redirect('/inbox');
   }),
 );
@@ -106,9 +128,17 @@ submissionsRouter.post(
   asyncHandler(async (req, res) => {
     const { action, comment } = req.body; // action: approve | reject | return
     if (!['approve', 'reject', 'return'].includes(action)) throw new HttpError(400, 'action ไม่ถูกต้อง');
-    await decideStep(req.params.id, req.user.emp_id, action, {
+    const result = await decideStep(req.params.id, req.user.emp_id, action, {
       comment: comment || '',
       expectedVersion: clientVersion(req),
+    });
+    await writeAuditLog({
+      actorEmpId: req.user.emp_id,
+      actorName: req.user.name,
+      action: `decide_${action}`,
+      entityType: 'submission',
+      entityId: req.params.id,
+      summary: `${req.user.name} กด "${action}" บน ${result.docNumber || req.params.id}`,
     });
     res.redirect(`/submissions/${req.params.id}`);
   }),
@@ -117,7 +147,15 @@ submissionsRouter.post(
 submissionsRouter.post(
   '/:id/recall',
   asyncHandler(async (req, res) => {
-    await recallDecision(req.params.id, req.user.emp_id, { expectedVersion: clientVersion(req) });
+    const result = await recallDecision(req.params.id, req.user.emp_id, { expectedVersion: clientVersion(req) });
+    await writeAuditLog({
+      actorEmpId: req.user.emp_id,
+      actorName: req.user.name,
+      action: 'recall',
+      entityType: 'submission',
+      entityId: req.params.id,
+      summary: `${req.user.name} ดึงกลับบน ${result.docNumber || req.params.id}`,
+    });
     res.redirect(`/submissions/${req.params.id}`);
   }),
 );
@@ -125,7 +163,15 @@ submissionsRouter.post(
 submissionsRouter.post(
   '/:id/cancel',
   asyncHandler(async (req, res) => {
-    await cancelSubmission(req.params.id, req.user.emp_id, { expectedVersion: clientVersion(req) });
+    const result = await cancelSubmission(req.params.id, req.user.emp_id, { expectedVersion: clientVersion(req) });
+    await writeAuditLog({
+      actorEmpId: req.user.emp_id,
+      actorName: req.user.name,
+      action: 'cancel',
+      entityType: 'submission',
+      entityId: req.params.id,
+      summary: `${req.user.name} ยกเลิก ${result.docNumber || req.params.id}`,
+    });
     res.redirect(`/submissions/${req.params.id}`);
   }),
 );
@@ -134,6 +180,14 @@ submissionsRouter.post(
   '/:id/comment',
   asyncHandler(async (req, res) => {
     await addComment(req.params.id, req.user.emp_id, req.user.name, req.body.text || '');
+    await writeAuditLog({
+      actorEmpId: req.user.emp_id,
+      actorName: req.user.name,
+      action: 'comment',
+      entityType: 'submission',
+      entityId: req.params.id,
+      summary: `${req.user.name} แสดงความเห็น`,
+    });
     res.redirect(`/submissions/${req.params.id}`);
   }),
 );
@@ -157,6 +211,7 @@ submissionsRouter.get(
       canDecide: canDecide(submission, req.user.emp_id),
       canRecall: canRecall(submission, req.user.emp_id),
       canCancel: canCancel(submission, req.user.emp_id),
+      timeline: buildTimeline(submission),
     });
   }),
 );

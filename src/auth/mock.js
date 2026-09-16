@@ -7,6 +7,7 @@ import { orgApi } from '../org/client.js';
 import { upsertUserFromOrg } from '../models/users.js';
 import { startSession } from './session.js';
 import { env } from '../config/env.js';
+import { writeAuditLog } from '../models/auditLog.js';
 
 export const mockAuthRouter = Router();
 
@@ -24,10 +25,29 @@ mockAuthRouter.post('/mock-login', async (req, res) => {
   }
   await upsertUserFromOrg(emp, { adminEmpIds: env.adminEmpIds, touchLastLogin: true });
   startSession(req, emp.emp_id);
+  await writeAuditLog({
+    actorEmpId: emp.emp_id,
+    actorName: emp.name,
+    action: 'login_mock',
+    entityType: 'user',
+    entityId: emp.emp_id,
+    summary: `${emp.name} เข้าสู่ระบบ (mock)`,
+  });
   res.redirect('/');
 });
 
-mockAuthRouter.post('/logout', (req, res) => {
+mockAuthRouter.post('/logout', async (req, res) => {
+  const empId = req.session?.emp_id;
   req.session = null;
+  if (empId) {
+    await writeAuditLog({
+      actorEmpId: empId,
+      actorName: empId,
+      action: 'logout',
+      entityType: 'user',
+      entityId: empId,
+      summary: `${empId} ออกจากระบบ`,
+    });
+  }
   res.redirect('/auth/login');
 });

@@ -171,6 +171,10 @@ const formName = submission.snapshot ? submission.snapshot.formName : 'MEMO à¸‚à
     </div>
   </div>
   </form>
+
+  <% if (mode === 'view') { %>
+    <%- include('partials/timeline', { timeline, submission, user }) %>
+  <% } %>
 </main>
 <% if (mode === 'edit') { %>
   <script src="/js/autosave.js"></script>
