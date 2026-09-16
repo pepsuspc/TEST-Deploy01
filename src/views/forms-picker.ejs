@@ -1,0 +1,27 @@
+<%- include('partials/head', {title: 'เลือกฟอร์ม'}) %>
+<body>
+<%- include('partials/topbar', {user}) %>
+<main class="page">
+  <h1>เลือกฟอร์ม</h1>
+  <% const categories = Object.keys(byCategory); %>
+  <% if (categories.length === 0) { %>
+    <p class="empty-state">ยังไม่มีฟอร์มที่เผยแพร่</p>
+  <% } %>
+  <% categories.forEach(function (cat) { %>
+    <section class="form-category">
+      <h2><%= cat %></h2>
+      <ul class="form-picker-list">
+        <% byCategory[cat].forEach(function (f) { %>
+          <li class="form-picker-card">
+            <div>
+              <div class="form-picker-name"><%= f.name %></div>
+              <% if (f.description) { %><div class="form-picker-desc"><%= f.description %></div><% } %>
+            </div>
+            <a href="/submissions/new?form=<%= f._id %>" class="button">ยื่น</a>
+          </li>
+        <% }) %>
+      </ul>
+    </section>
+  <% }) %>
+</main>
+<%- include('partials/foot') %>

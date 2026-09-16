@@ -1,0 +1,84 @@
+<%
+// §7.3 table field type. `el`, `value`, `mode` are passed in from the
+// element loop in memo-a4.ejs.
+const rows = (value && Array.isArray(value.rows)) ? value.rows : [];
+const minRows = el.props.minRows ?? 1;
+const paddedRows = rows.length >= minRows ? rows : rows.concat(Array(minRows - rows.length).fill({}));
+
+function cellInput(col, cellValue, rowIndex) {
+  const name = `values[${el.id}][rows][${rowIndex}][${col.key}]`;
+  if (col.type === 'date') {
+    return `<input class="a4-input" type="date" name="${name}" value="${cellValue || ''}">`;
+  }
+  if (col.type === 'select_one' && col.options) {
+    const opts = col.options.map((o) => `<option value="${o}" ${cellValue === o ? 'selected' : ''}>${o}</option>`).join('');
+    return `<select class="a4-input" name="${name}"><option value="">—</option>${opts}</select>`;
+  }
+  const inputMode = col.type === 'number' ? ' inputmode="decimal"' : '';
+  const escaped = String(cellValue ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  return `<input class="a4-input" type="text"${inputMode} name="${name}" value="${escaped}">`;
+}
+%>
+<label class="a4-field-label"><%= el.props.label %></label>
+<% if (mode === 'edit') { %>
+  <div class="table-field" data-field-id="<%= el.id %>" data-min-rows="<%= minRows %>" data-max-rows="<%= el.props.maxRows ?? 50 %>">
+    <table class="a4-approval-table table-field-grid">
+      <thead>
+        <tr>
+          <% el.props.columns.forEach(function (col) { %><th><%= col.label %><% if (col.required) { %> *<% } %></th><% }) %>
+          <th class="no-print"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% paddedRows.forEach(function (row, rowIndex) { %>
+          <tr>
+            <% el.props.columns.forEach(function (col) { %>
+              <td><%- cellInput(col, row[col.key], rowIndex) %></td>
+            <% }) %>
+            <td class="no-print"><button type="button" class="table-field-remove button secondary">ลบแถว</button></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    <button type="button" class="table-field-add button secondary no-print">+ เพิ่มแถว</button>
+
+    <template class="table-field-row-template">
+      <tr>
+        <% el.props.columns.forEach(function (col) { %>
+          <td><%- cellInput(col, '', '__INDEX__') %></td>
+        <% }) %>
+        <td class="no-print"><button type="button" class="table-field-remove button secondary">ลบแถว</button></td>
+      </tr>
+    </template>
+  </div>
+<% } else { %>
+  <table class="a4-approval-table">
+    <thead>
+      <tr><% el.props.columns.forEach(function (col) { %><th><%= col.label %></th><% }) %></tr>
+    </thead>
+    <tbody>
+      <% rows.forEach(function (row) { %>
+        <tr>
+          <% el.props.columns.forEach(function (col) { %>
+            <td>
+              <% const cv = row[col.key]; %>
+              <%= (cv === undefined || cv === null || cv === '') ? '' : (col.type === 'number' ? formatNumber(cv) : (col.type === 'date' ? formatThaiDate(cv) : cv)) %>
+            </td>
+          <% }) %>
+        </tr>
+      <% }) %>
+      <% if ((el.props.sumColumns || []).length > 0) { %>
+        <tr class="table-field-sum-row">
+          <% el.props.columns.forEach(function (col) { %>
+            <td>
+              <% if ((el.props.sumColumns || []).includes(col.key)) { %>
+                <% const sum = rows.reduce(function (acc, r) { const n = Number(String(r[col.key] || 0).replace(/,/g,'')); return acc + (Number.isNaN(n) ? 0 : n); }, 0); %>
+                <strong><%= formatNumber(sum) %></strong>
+              <% } %>
+            </td>
+          <% }) %>
+        </tr>
+      <% } %>
+    </tbody>
+  </table>
+<% } %>

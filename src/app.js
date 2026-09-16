@@ -8,9 +8,12 @@ import { submissionsRouter } from './routes/submissions.routes.js';
 import { sessionMiddleware, requireAuth } from './auth/session.js';
 import { findUserByEmpId } from './models/users.js';
 import { formatThaiDate } from './domain/thaiDate.js';
+import { formatNumber, formatFileSize } from './domain/formatters.js';
 import { STATUS_LABEL } from './domain/statusLabels.js';
 import { inboxRouter } from './routes/inbox.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
+import { filesRouter } from './routes/files.routes.js';
+import { formsRouter, manageFormsRouter } from './routes/forms.routes.js';
 import { HttpError } from './lib/httpError.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -21,6 +24,8 @@ export function createApp() {
   app.set('view engine', 'ejs');
   app.set('views', path.join(__dirname, 'views'));
   app.locals.formatThaiDate = formatThaiDate;
+  app.locals.formatNumber = formatNumber;
+  app.locals.formatFileSize = formatFileSize;
   app.locals.STATUS_LABEL = STATUS_LABEL;
 
   // Static files and /healthz need no login (§12.1).
@@ -40,13 +45,16 @@ export function createApp() {
   app.use(requireAuth);
   app.use(loadCurrentUser);
 
-  app.get('/', (req, res) => {
-    res.render('home', { user: res.locals.user });
-  });
+  // §10.1: the inbox is "หน้าแรกหลัง login" — home.ejs was only a chunk-1
+  // placeholder before /inbox existed.
+  app.get('/', (req, res) => res.redirect('/inbox'));
 
   app.use('/submissions', submissionsRouter);
   app.use('/inbox', inboxRouter);
   app.use('/notifications', notificationsRouter);
+  app.use('/files', filesRouter);
+  app.use('/forms', formsRouter);
+  app.use('/manage/forms', manageFormsRouter);
 
   app.use((req, res) => {
     res.status(404).render('error', { status: 404, message: 'ไม่พบหน้านี้' });
@@ -57,11 +65,17 @@ export function createApp() {
   return app;
 }
 
+function wantsJson(req) {
+  return req.get('accept')?.includes('application/json') || req.get('content-type')?.includes('multipart/form-data');
+}
+
 function errorHandler(err, req, res, next) {
   if (err instanceof HttpError) {
+    if (wantsJson(req)) return res.status(err.status).json({ error: err.message });
     return res.status(err.status).render('error', { status: err.status, message: err.message });
   }
   console.error(err);
+  if (wantsJson(req)) return res.status(500).json({ error: 'เกิดข้อผิดพลาดที่ไม่คาดคิด' });
   res.status(500).render('error', { status: 500, message: 'เกิดข้อผิดพลาดที่ไม่คาดคิด' });
 }
 

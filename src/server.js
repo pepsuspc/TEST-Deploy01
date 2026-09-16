@@ -12,6 +12,8 @@ async function main() {
   const { ensureIndexes } = await import('./db/indexes.js');
   const { createApp } = await import('./app.js');
   const { syncUsers } = await import('./org/sync.js');
+  const { sweepOrphanFiles } = await import('./models/files.js');
+  const { seedMemoForm } = await import('./db/seedForms.js');
 
   const db = await connectDb();
   await ensureIndexes(db);
@@ -34,6 +36,19 @@ async function main() {
   }
   setInterval(() => {
     syncUsers().catch((err) => console.error(`daily org sync failed: ${err.message}`));
+  }, DAY_MS);
+
+  // Idempotent: only inserts MEMO if no form with that docPrefix exists yet.
+  await seedMemoForm(env.adminEmpIds[0] ?? 'E001').catch((err) => {
+    console.error(`seeding MEMO form failed: ${err.message}`);
+  });
+
+  // §8.8: sweep files uploaded but never attached to a saved submission
+  // (the user picked a file, then closed the tab without saving).
+  setInterval(() => {
+    sweepOrphanFiles()
+      .then((n) => n > 0 && console.log(`orphan file sweep: removed ${n}`))
+      .catch((err) => console.error(`orphan file sweep failed: ${err.message}`));
   }, DAY_MS);
 
   const app = createApp(db);

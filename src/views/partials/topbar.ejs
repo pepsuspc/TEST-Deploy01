@@ -2,6 +2,10 @@
   <a href="/" class="topbar-brand">its-forms</a>
   <nav class="topbar-nav">
     <a href="/inbox">กล่องงาน</a>
+    <a href="/forms">ยื่นคำร้อง</a>
+    <% if (user.roles && (user.roles.includes('admin') || user.roles.includes('form_owner'))) { %>
+      <a href="/manage/forms">จัดการฟอร์ม</a>
+    <% } %>
   </nav>
   <div class="topbar-user">
     <div class="notif-wrap">

@@ -1,0 +1,45 @@
+<%- include('partials/head', {title: 'จัดการฟอร์ม'}) %>
+<body>
+<%- include('partials/topbar', {user}) %>
+<main class="page">
+  <div class="inbox-header">
+    <h1>ฟอร์มของฉัน</h1>
+  </div>
+
+  <form method="POST" action="/manage/forms" class="action-panel">
+    <label>ชื่อฟอร์มใหม่ <input class="a4-input" type="text" name="name" required style="width:auto;display:inline-block"></label>
+    <label>หมวด
+      <select class="a4-input" name="category" style="width:auto;display:inline-block">
+        <option>MEMO</option>
+        <option>ใบคำร้อง</option>
+        <option>อื่น ๆ</option>
+      </select>
+    </label>
+    <label>Prefix เลขที่เอกสาร (A-Z 2-6 ตัว) <input class="a4-input" type="text" name="docPrefix" required pattern="[A-Za-z]{2,6}" style="width:auto;display:inline-block"></label>
+    <button type="submit" class="button">+ สร้างฟอร์มใหม่</button>
+  </form>
+
+  <% if (forms.length === 0) { %>
+    <p class="empty-state">ยังไม่มีฟอร์มที่คุณดูแล</p>
+  <% } else { %>
+    <table class="a4-approval-table">
+      <thead><tr><th>ชื่อ</th><th>หมวด</th><th>สถานะ</th><th>แก้ล่าสุด</th><th></th></tr></thead>
+      <tbody>
+        <% forms.forEach(function (f) { %>
+          <tr>
+            <td><%= f.name %></td>
+            <td><%= f.category %></td>
+            <td><span class="inbox-status-badge status-<%= f.status %>"><%= f.status %></span></td>
+            <td><%= formatThaiDate(f.updatedAt, { withTime: true }) %></td>
+            <td>
+              <a href="/manage/forms/<%= f._id %>/design">ออกแบบ</a> ·
+              <a href="/manage/forms/<%= f._id %>/settings">ตั้งค่า</a> ·
+              <a href="/manage/forms/<%= f._id %>/submissions">คำร้อง</a>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</main>
+<%- include('partials/foot') %>

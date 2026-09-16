@@ -1,7 +1,8 @@
 <%
 // STATUS_LABEL comes from app.locals (domain/statusLabels.js) automatically.
+// formName is passed in by the route (formContextFor()) — snapshot once
+// submitted, the live form's name for a draft that's never been submitted.
 const errs = typeof errors === 'undefined' ? {} : errors;
-const formName = submission.snapshot ? submission.snapshot.formName : 'MEMO ขออนุมัติ';
 %>
 <%- include('partials/head', {title: formName}) %>
 <body>
@@ -76,7 +77,7 @@ const formName = submission.snapshot ? submission.snapshot.formName : 'MEMO ข�
     <% } %>
   <% } %>
 
-  <form id="memo-form" data-save-url="/submissions/<%= submission._id %>/save">
+  <form id="memo-form" data-save-url="/submissions/<%= submission._id %>/save" data-submission-id="<%= submission._id %>">
     <input type="hidden" id="version-field" name="version" value="<%= submission.version %>">
   <div class="a4-page-wrap">
     <div class="a4-page">
@@ -148,6 +149,96 @@ const formName = submission.snapshot ? submission.snapshot.formName : 'MEMO ข�
                 </div>
               <% } %>
 
+            <% } else if (el.type === 'number') { %>
+              <label class="a4-field-label" for="f_<%= el.id %>">
+                <%= el.props.label %><% if (el.props.required) { %> <span class="a4-required">*</span><% } %>
+              </label>
+              <% if (mode === 'edit') { %>
+                <input class="a4-input" type="text" inputmode="decimal" id="f_<%= el.id %>" name="values[<%= el.id %>]" value="<%= value ?? '' %>">
+              <% } else { %>
+                <% const numText = (value === undefined || value === null || value === '') ? '—' : formatNumber(value, el.props.decimals || 0); %>
+                <div class="a4-value <%= el.align === 'right' ? 'a4-align-right' : '' %>"><%= el.props.prefix || '' %><%= numText %><%= el.props.suffix ? ' ' + el.props.suffix : '' %></div>
+              <% } %>
+
+            <% } else if (el.type === 'date') { %>
+              <label class="a4-field-label">
+                <%= el.props.label %><% if (el.props.required) { %> <span class="a4-required">*</span><% } %>
+              </label>
+              <% const dateVal = (value && typeof value === 'object') ? value : {}; %>
+              <% if (mode === 'edit') { %>
+                <div style="display:flex; gap: 0.5rem; align-items:center;">
+                  <input class="a4-input" type="date" name="values[<%= el.id %>][from]" value="<%= dateVal.from || '' %>">
+                  <% if (el.props.mode === 'range') { %>
+                    <span>ถึง</span>
+                    <input class="a4-input" type="date" name="values[<%= el.id %>][to]" value="<%= dateVal.to || '' %>">
+                  <% } %>
+                </div>
+              <% } else { %>
+                <div class="a4-value">
+                  <%= dateVal.from ? formatThaiDate(dateVal.from) : '—' %><% if (el.props.mode === 'range' && dateVal.to) { %> – <%= formatThaiDate(dateVal.to) %><% } %>
+                </div>
+              <% } %>
+
+            <% } else if (el.type === 'select_one') { %>
+              <label class="a4-field-label">
+                <%= el.props.label %><% if (el.props.required) { %> <span class="a4-required">*</span><% } %>
+              </label>
+              <% if (mode === 'edit') { %>
+                <% if (el.props.display === 'radio') { %>
+                  <div class="a4-checkbox-row">
+                    <% el.props.options.forEach(function (opt) { %>
+                      <label><input type="radio" name="values[<%= el.id %>]" value="<%= opt %>" <%= value === opt ? 'checked' : '' %>> <%= opt %></label>
+                    <% }) %>
+                  </div>
+                <% } else { %>
+                  <select class="a4-input" name="values[<%= el.id %>]">
+                    <option value="">— เลือก —</option>
+                    <% el.props.options.forEach(function (opt) { %>
+                      <option value="<%= opt %>" <%= value === opt ? 'selected' : '' %>><%= opt %></option>
+                    <% }) %>
+                  </select>
+                <% } %>
+              <% } else { %>
+                <div class="a4-value"><%= value || '—' %></div>
+              <% } %>
+
+            <% } else if (el.type === 'file') { %>
+              <label class="a4-field-label">
+                <%= el.props.label %><% if (el.props.required) { %> <span class="a4-required">*</span><% } %>
+              </label>
+              <% const files = Array.isArray(value) ? value : []; %>
+              <% if (mode === 'edit') { %>
+                <div class="file-field" data-field-id="<%= el.id %>" data-max-files="<%= el.props.maxFiles || 5 %>" data-accept="<%= (el.props.accept || []).join(',') %>">
+                  <ul class="file-field-list">
+                    <% files.forEach(function (f) { %>
+                      <li data-file-id="<%= f.fileId %>"><%= f.name %> (<%= formatFileSize(f.size) %>) <button type="button" class="file-field-remove">ลบ</button>
+                        <input type="hidden" name="values[<%= el.id %>][]" value="<%= f.fileId %>"></li>
+                    <% }) %>
+                  </ul>
+                  <input type="file" class="file-field-input no-print">
+                  <div class="file-field-status"></div>
+                </div>
+              <% } else { %>
+                <ul class="a4-file-list">
+                  <% files.forEach(function (f) { %>
+                    <li><a href="/files/<%= f.fileId %>" target="_blank"><%= f.name %></a> (<%= formatFileSize(f.size) %>)</li>
+                  <% }) %>
+                  <% if (files.length === 0) { %><li>—</li><% } %>
+                </ul>
+              <% } %>
+
+            <% } else if (el.type === 'table') { %>
+              <%- include('partials/table-field', { el, value, mode }) %>
+
+            <% } else if (el.type === 'static') { %>
+              <% if (el.props.variant === 'heading') { %>
+                <h3 class="a4-static-heading"><%= el.props.text %></h3>
+              <% } else if (el.props.variant === 'line') { %>
+                <hr class="a4-static-line">
+              <% } else { %>
+                <p class="a4-static-paragraph"><%= el.props.text %></p>
+              <% } %>
+
             <% } else if (el.type === 'auto') { %>
               <label class="a4-field-label"><%= el.props.label %></label>
               <%
@@ -155,9 +246,14 @@ const formName = submission.snapshot ? submission.snapshot.formName : 'MEMO ข�
                 // line breaks), so this has to be built as one single-line
                 // string — multi-line EJS control flow directly inside the
                 // div would leave literal blank lines in the rendered output.
-                let autoText = '';
-                if (el.props.source === 'submitted_at') {
-                  autoText = submission.submittedAt ? formatThaiDate(submission.submittedAt) : '(จะเติมอัตโนมัติตอนส่ง)';
+                const rawAuto = submission.autoValues ? submission.autoValues[el.id] : undefined;
+                let autoText;
+                if (rawAuto === undefined || rawAuto === null) {
+                  autoText = '(จะเติมอัตโนมัติตอนส่ง)';
+                } else if (el.props.source === 'submitted_at') {
+                  autoText = formatThaiDate(rawAuto);
+                } else {
+                  autoText = String(rawAuto);
                 }
               %>
               <div class="a4-value <%= el.align === 'right' ? 'a4-align-right' : '' %>"><%= autoText %></div>
@@ -183,5 +279,7 @@ const formName = submission.snapshot ? submission.snapshot.formName : 'MEMO ข�
 </main>
 <% if (mode === 'edit') { %>
   <script src="/js/autosave.js"></script>
+  <script src="/js/file-field.js"></script>
+  <script src="/js/table-field.js"></script>
 <% } %>
 <%- include('partials/foot') %>

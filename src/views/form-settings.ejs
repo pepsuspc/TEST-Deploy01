@@ -1,0 +1,49 @@
+<%- include('partials/head', {title: form.name + ' — ตั้งค่า'}) %>
+<body>
+<%- include('partials/topbar', {user}) %>
+<main class="page">
+  <h1><%= form.name %></h1>
+  <%- include('partials/form-design-tabs', { form, tab }) %>
+
+  <form method="POST" action="/manage/forms/<%= form._id %>/settings" class="action-panel">
+    <label>ชื่อฟอร์ม<br><input class="a4-input" type="text" name="name" value="<%= form.name %>" required></label><br><br>
+    <label>หมวด<br>
+      <select class="a4-input" name="category">
+        <% ['MEMO', 'ใบคำร้อง', 'อื่น ๆ'].forEach(function (c) { %>
+          <option <%= form.category === c ? 'selected' : '' %>><%= c %></option>
+        <% }) %>
+      </select>
+    </label><br><br>
+    <label>คำอธิบายสั้น<br><textarea class="a4-input" name="description" rows="2"><%= form.description %></textarea></label><br><br>
+    <label>Prefix เลขที่เอกสาร: <strong><%= form.docPrefix %></strong> <span class="a4-save-status">(ล็อกหลังมีคำร้องใบแรก)</span></label><br><br>
+    <label><input type="checkbox" name="allowAllDepartments" <%= form.allowedDepartmentIds.length === 0 ? 'checked' : '' %>> ทุกแผนกยื่นได้</label><br>
+    <div>
+      <% departments.forEach(function (d) { %>
+        <label><input type="checkbox" name="allowedDepartmentIds" value="<%= d.id %>" <%= form.allowedDepartmentIds.includes(d.id) ? 'checked' : '' %>> <%= d.name %></label><br>
+      <% }) %>
+    </div>
+    <br>
+    <button type="submit" class="button">บันทึกตั้งค่า</button>
+  </form>
+
+  <div class="action-panel">
+    <p>สถานะปัจจุบัน: <strong><%= form.status %></strong></p>
+    <% if (form.status === 'draft' || form.status === 'closed') { %>
+      <form method="POST" action="/manage/forms/<%= form._id %>/publish" style="display:inline">
+        <button type="submit" class="button">เผยแพร่</button>
+      </form>
+    <% } %>
+    <% if (form.status === 'published') { %>
+      <form method="POST" action="/manage/forms/<%= form._id %>/close" style="display:inline" onsubmit="return confirm('ปิดรับฟอร์มนี้?');">
+        <button type="submit" class="button secondary">ปิดรับ</button>
+      </form>
+    <% } %>
+    <form method="POST" action="/manage/forms/<%= form._id %>/clone" style="display:inline">
+      <button type="submit" class="button secondary">คัดลอกฟอร์ม</button>
+    </form>
+    <form method="POST" action="/manage/forms/<%= form._id %>/delete" style="display:inline" onsubmit="return confirm('ลบฟอร์มนี้? (ลบได้เฉพาะฟอร์มที่ไม่เคยมีคำร้อง)');">
+      <button type="submit" class="button danger">ลบฟอร์ม</button>
+    </form>
+  </div>
+</main>
+<%- include('partials/foot') %>

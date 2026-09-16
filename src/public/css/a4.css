@@ -219,6 +219,24 @@ textarea.a4-input {
   font-size: 0.9rem;
 }
 
+/* File field */
+.file-field-list { list-style: none; margin: 0 0 1mm; padding: 0; font-size: 10pt; }
+.file-field-list li { padding: 0.5mm 0; }
+.file-field-remove { margin-left: 1mm; font-size: 9pt; color: #b3261e; background: none; border: none; cursor: pointer; text-decoration: underline; }
+.file-field-status { font-size: 9pt; color: #666; margin-top: 0.5mm; }
+.a4-file-list { list-style: none; margin: 0; padding: 0; font-size: 10.5pt; }
+
+/* Static field */
+.a4-static-heading { font-size: 12pt; font-weight: 700; margin: 0; }
+.a4-static-paragraph { margin: 0; }
+.a4-static-line { border: none; border-top: 0.25mm solid #999; margin: 1mm 0; }
+
+/* Table field */
+.table-field-grid { margin-bottom: 1mm; }
+.table-field-add { margin-bottom: 2mm; }
+.table-field-sum-row td { border-top: 0.5mm solid #333; }
+.table-field-row-template { display: none; }
+
 @media print {
   body * { visibility: hidden; }
   .a4-page, .a4-page * { visibility: visible; }

@@ -17,6 +17,7 @@
     "cookie-session": "^2.1.0",
     "ejs": "^3.1.10",
     "express": "^4.21.0",
-    "mongodb": "^6.9.0"
+    "mongodb": "^6.9.0",
+    "multer": "^2.4.0"
   }
 }

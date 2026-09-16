@@ -22,7 +22,7 @@
           <li>
             <a href="/submissions/<%= s._id %>" class="inbox-row">
               <span class="inbox-docnum"><%= s.docNumber %></span>
-              <span class="inbox-subject"><%= subjectText(s) %></span>
+              <span class="inbox-subject"><%= s.subject %></span>
               <span class="inbox-submitter">
                 <%= s.submitter.name %><%= s.submitter.department ? ' · ' + s.submitter.department.name : '' %>
               </span>
@@ -44,7 +44,7 @@
           <li>
             <a href="/submissions/<%= s._id %>" class="inbox-row">
               <span class="inbox-docnum"><%= s.docNumber || '(ร่าง)' %></span>
-              <span class="inbox-subject"><%= subjectText(s) || '(ยังไม่มีชื่อเรื่อง)' %></span>
+              <span class="inbox-subject"><%= s.subject || '(ยังไม่มีชื่อเรื่อง)' %></span>
               <span class="inbox-status-badge status-<%= s.status %>"><%= STATUS_LABEL[s.status] %></span>
               <% if (s.status === 'pending') { %>
                 <span class="inbox-step"><%= s.current.stepName %></span>

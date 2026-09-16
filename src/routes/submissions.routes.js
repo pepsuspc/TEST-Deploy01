@@ -10,7 +10,7 @@ import {
   cancelSubmission,
   resubmitFrom,
   addComment,
-  elementsFor,
+  formContextFor,
   isRelatedToSubmission,
   canDecide,
   canRecall,
@@ -33,11 +33,12 @@ function clientVersion(req) {
   return req.body.version !== undefined ? Number(req.body.version) : undefined;
 }
 
-// GET /submissions/new -- create a blank draft and go straight to editing it
+// GET /submissions/new?form=<id> -- create a blank draft and go straight to editing it
 submissionsRouter.get(
   '/new',
   asyncHandler(async (req, res) => {
-    const draft = await createDraft(req.user);
+    if (!req.query.form) throw new HttpError(400, 'ต้องระบุฟอร์ม');
+    const draft = await createDraft(req.user, req.query.form);
     res.redirect(`/submissions/${draft._id}/edit`);
   }),
 );
@@ -53,10 +54,12 @@ submissionsRouter.get(
     if (submission.status !== 'draft') {
       throw new HttpError(409, 'คำร้องนี้ไม่ได้อยู่ในสถานะร่างแล้ว — เปิดดูแทน');
     }
+    const { elements, formName } = await formContextFor(submission);
     res.render('memo-a4', {
       mode: 'edit',
       submission,
-      elements: elementsFor(submission),
+      elements,
+      formName,
       errors: {},
       user: req.user,
     });
@@ -87,10 +90,12 @@ submissionsRouter.post(
     const values = req.body.values || {};
     const result = await submitDraft(req.params.id, req.user.emp_id, { values, expectedVersion: clientVersion(req) });
     if (!result.ok) {
+      const { elements, formName } = await formContextFor(result.submission);
       return res.status(422).render('memo-a4', {
         mode: 'edit',
         submission: result.submission,
-        elements: elementsFor(result.submission),
+        elements,
+        formName,
         errors: result.errors || {},
         blocked: result.blocked,
         user: req.user,
@@ -219,10 +224,12 @@ submissionsRouter.get(
     if (!isRelatedToSubmission(submission, req.user.emp_id) && !req.user.roles?.includes('admin')) {
       throw new HttpError(403, 'คุณไม่มีสิทธิ์ดูคำร้องนี้');
     }
+    const { elements, formName } = await formContextFor(submission);
     res.render('memo-a4', {
       mode: 'view',
       submission,
-      elements: elementsFor(submission),
+      elements,
+      formName,
       errors: {},
       user: req.user,
       canDecide: canDecide(submission, req.user.emp_id),

@@ -7,17 +7,11 @@
 import { ObjectId } from 'mongodb';
 import { getDb } from '../db/connection.js';
 import { findUserByEmpId } from './users.js';
+import { getFormById } from './forms.js';
+import { attachFilesToSubmission } from './files.js';
 import { nextDocNumber } from '../domain/docNumber.js';
 import { validateValues } from '../domain/validateField.js';
 import { evaluateStep } from '../domain/evaluateStep.js';
-import {
-  MEMO_ELEMENTS,
-  MEMO_FORM_ID,
-  MEMO_FORM_NAME,
-  MEMO_FORM_VERSION,
-  MEMO_DOC_PREFIX,
-  MEMO_STEPS,
-} from '../domain/memoFormDef.js';
 import { HttpError } from '../lib/httpError.js';
 import { notify, notifyMany } from './notifications.js';
 
@@ -30,7 +24,17 @@ function toObjectId(id) {
   return new ObjectId(id);
 }
 
-export async function createDraft(user) {
+export async function createDraft(user, formId) {
+  const form = await getFormById(formId);
+  if (!form) throw new HttpError(404, 'ไม่พบฟอร์ม');
+  if (form.status !== 'published') throw new HttpError(409, 'ฟอร์มนี้ยังไม่เผยแพร่หรือปิดรับไปแล้ว');
+  if (form.allowedDepartmentIds?.length > 0) {
+    const deptId = user.department?.id;
+    if (!deptId || !form.allowedDepartmentIds.includes(deptId)) {
+      throw new HttpError(403, 'แผนกของคุณยื่นฟอร์มนี้ไม่ได้');
+    }
+  }
+
   const now = new Date();
   const doc = {
     // docNumber is intentionally OMITTED (not set to null) until first
@@ -38,8 +42,8 @@ export async function createDraft(user) {
     // documents where the field is truly *missing* — an explicit `null` is
     // still a value and still gets indexed, so every second draft ever
     // created would collide on it (found by testing, not by inspection).
-    formId: MEMO_FORM_ID,
-    formVersion: MEMO_FORM_VERSION,
+    formId: form._id.toString(),
+    formVersion: form.formVersion,
     status: 'draft',
     version: 1,
     submitter: {
@@ -51,7 +55,16 @@ export async function createDraft(user) {
     },
     snapshot: null,
     values: {},
-    autoValues: {},
+    // §7.4: submitter_*/form_name auto fields fill in at draft creation;
+    // submitted_at/doc_number wait until first submit (buildAutoValues
+    // returns null for those here since ctx has no submittedAt/docNumber
+    // yet, so they're simply omitted rather than written as null).
+    autoValues: buildAutoValues(form.elements, {
+      submitter: { emp_id: user.emp_id, name: user.name, department: user.department, position: user.position, email: user.email },
+      formName: form.name,
+      submittedAt: null,
+      docNumber: null,
+    }),
     current: null,
     rounds: [],
     comments: [],
@@ -72,6 +85,35 @@ export function listMySubmissions(empId) {
   return collection().find({ 'submitter.emp_id': empId }).sort({ updatedAt: -1 }).toArray();
 }
 
+// §10.7 "/manage/forms/{id}/submissions" — every submission of one form,
+// for its owner. `query` comes straight from req.query: status, from, to
+// (submittedAt range), q (doc number / subject search), page.
+export async function listSubmissionsForForm(formId, query = {}) {
+  const filter = { formId };
+  if (query.status) filter.status = query.status;
+  if (query.from || query.to) {
+    filter.submittedAt = {};
+    if (query.from) filter.submittedAt.$gte = new Date(query.from);
+    if (query.to) filter.submittedAt.$lte = new Date(`${query.to}T23:59:59.999Z`);
+  }
+  if (query.q) {
+    filter.$or = [{ docNumber: { $regex: escapeRegex(query.q), $options: 'i' } }];
+  }
+  const page = Math.max(1, Number(query.page) || 1);
+  const pageSize = 50;
+  const cursor = collection()
+    .find(filter)
+    .sort({ submittedAt: -1 })
+    .skip((page - 1) * pageSize)
+    .limit(pageSize);
+  const [items, total] = await Promise.all([cursor.toArray(), collection().countDocuments(filter)]);
+  return { items, total, page, pageSize, pageCount: Math.max(1, Math.ceil(total / pageSize)) };
+}
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // §10.1 "รอฉันอนุมัติ" tab — sorted overdue-first, then longest-waiting
 // first. `deadlineAt` is always null in chunk 1 (per-step deadlines are
 // chunk 3), so today this is just "longest-waiting first"; the overdue
@@ -88,10 +130,10 @@ export function isOverdue(submission, now = new Date()) {
 }
 
 // §10.1: "เรื่อง (ฟิลด์ short_text ตัวแรกบนกระดาษ)" — the first short_text
-// element's value, generically (works whether elements come from the
-// hardcoded chunk-1 def or a future real form snapshot).
-export function subjectText(submission) {
-  const firstShortText = elementsFor(submission).find((el) => el.type === 'short_text');
+// element's value, generically (whatever form this submission is for).
+export async function subjectText(submission) {
+  const elements = await elementsFor(submission);
+  const firstShortText = elements.find((el) => el.type === 'short_text');
   if (!firstShortText) return '';
   return (submission.values && submission.values[firstShortText.id]) || '';
 }
@@ -100,17 +142,54 @@ export function subjectText(submission) {
 // submitted, always use the frozen snapshot (§7.8) — never the live form
 // definition, even if the submission has since bounced back to `draft` via
 // a return/recall. A submission that has never been submitted has no
-// snapshot yet, so it reads the live definition.
-export function elementsFor(submission) {
-  return submission.snapshot?.elements ?? MEMO_ELEMENTS;
+// snapshot yet, so it reads the *live* form (§7.8: "ร่างที่ยังไม่ส่ง
+// อ่านจากฟอร์มปัจจุบัน") — which is why this has to be async now; a
+// hardcoded constant never needed a database round trip.
+export async function elementsFor(submission) {
+  return (await formContextFor(submission)).elements;
+}
+
+// Same idea as elementsFor, but also carries the form's name/letterhead —
+// views need those too (title bar, letterhead box) and shouldn't each
+// re-derive "snapshot, or fall back to the live form" on their own.
+export async function formContextFor(submission) {
+  if (submission.snapshot) {
+    return {
+      elements: submission.snapshot.elements,
+      formName: submission.snapshot.formName,
+      letterheadId: submission.snapshot.letterheadId ?? null,
+    };
+  }
+  const form = await getFormById(submission.formId);
+  if (!form) return { elements: [], formName: '(ไม่พบฟอร์ม)', letterheadId: null };
+  return { elements: form.elements, formName: form.name, letterheadId: form.letterheadId };
+}
+
+// §8.8: turn each `file`-type field's client-supplied fileId list into
+// resolved, permission-checked metadata, attaching those files to this
+// submission in the process. Other fields pass through untouched.
+async function resolveFileFields(elements, values, submissionId, empId) {
+  const resolved = { ...values };
+  for (const el of elements) {
+    if (el.type !== 'file') continue;
+    const raw = values[el.id];
+    const fileIds = Array.isArray(raw) ? raw.map((v) => (typeof v === 'string' ? v : v.fileId)).filter(Boolean) : [];
+    resolved[el.id] = await attachFilesToSubmission(fileIds, { submissionId, elementId: el.id, empId });
+  }
+  return resolved;
 }
 
 export async function saveDraftValues(id, empId, values, { expectedVersion } = {}) {
+  const draft = await getSubmissionById(id);
+  if (!draft) throw new HttpError(404, 'ไม่พบร่างนี้');
+  const elements = await elementsFor(draft);
+  const resolvedValues = await resolveFileFields(elements, values, id, empId);
+
   const filter = { _id: toObjectId(id), 'submitter.emp_id': empId, status: 'draft' };
   if (expectedVersion !== undefined) filter.version = expectedVersion;
   const result = await collection().findOneAndUpdate(
     filter,
-    { $set: { values, updatedAt: new Date() }, $inc: { version: 1 } },
+    { $set: { values: resolvedValues, updatedAt: new Date() }, $inc: { version: 1 } },
     { returnDocument: 'after' },
   );
   if (!result) throw new HttpError(409, 'ไม่พบร่างนี้ หรือมีการเปลี่ยนแปลงไปแล้ว กรุณาโหลดหน้าใหม่');
@@ -129,11 +208,14 @@ export async function deleteDraft(id, empId) {
   return result.deletedCount === 1;
 }
 
-// Resolve one MEMO_STEPS entry into an approver (§7.5/§D.7). Chunk 1 only
-// supports the two rules MEMO_STEPS actually uses; the full 3-type
-// resolver (user/relative/submitter_choice) with dedup is chunk 3.
-async function resolveStepApprover(stepDef, submitterUser) {
-  if (stepDef.resolve === 'chief') {
+// Resolve one workflow-step-definition's approvers into real people
+// (§7.5/§D.7). Chunk 2 supports the two rules a form's workflow can
+// actually contain so far: `relative:chief` and a fixed `user`. The full
+// 3-type resolver — `relative:department_head`, `submitter_choice`, N-of-M
+// dedup across multiple approvers in one step — is chunk 3; every step
+// today has exactly one approver, so quorum is always 1-of-1.
+async function resolveOneApprover(approverDef, submitterUser, stepName) {
+  if (approverDef.type === 'relative' && approverDef.relation === 'chief') {
     const chief = submitterUser.chief;
     if (!chief?.emp_id) return { blocked: 'ไม่พบหัวหน้าโดยตรงของคุณในระบบ ติดต่อฝ่ายไอที' };
     const chiefUser = await findUserByEmpId(chief.emp_id);
@@ -142,25 +224,27 @@ async function resolveStepApprover(stepDef, submitterUser) {
     }
     return { approver: { emp_id: chief.emp_id, name: chiefUser?.name ?? chief.name, source: 'relative:chief' } };
   }
-  if (stepDef.resolve === 'fixed') {
-    const user = await findUserByEmpId(stepDef.fixedEmpId);
+  if (approverDef.type === 'user') {
+    const user = await findUserByEmpId(approverDef.emp_id);
     if (!user || user.is_active === false) {
-      return { blocked: `ไม่พบผู้อนุมัติของขั้น "${stepDef.name}" ในระบบ ติดต่อฝ่ายไอที` };
+      return { blocked: `ไม่พบผู้อนุมัติของขั้น "${stepName}" ในระบบ ติดต่อฝ่ายไอที` };
     }
-    return { approver: { emp_id: user.emp_id, name: user.name, source: 'fixed' } };
+    return { approver: { emp_id: user.emp_id, name: user.name, source: 'user' } };
   }
-  throw new Error(`unknown resolve rule: ${stepDef.resolve}`);
+  return { blocked: `ขั้น "${stepName}" ใช้กติกาผู้อนุมัติที่ยังไม่รองรับ (${approverDef.type}) — รอก้อนที่ 3` };
 }
 
-async function resolveAllSteps(submitterUser) {
+async function resolveAllSteps(workflowSteps, submitterUser) {
   const steps = [];
-  for (const stepDef of MEMO_STEPS) {
-    const resolved = await resolveStepApprover(stepDef, submitterUser);
+  for (const stepDef of workflowSteps) {
+    // Chunk 2 forms only ever have exactly one approver per step (see
+    // forms.js's default workflow); resolve it and dedup is chunk 3.
+    const resolved = await resolveOneApprover(stepDef.approvers[0], submitterUser, stepDef.name);
     if (resolved.blocked) return { blocked: resolved.blocked };
     steps.push({
-      stepId: stepDef.stepId,
+      stepId: stepDef.id,
       name: stepDef.name,
-      quorum: 1,
+      quorum: stepDef.quorum,
       approvers: [resolved.approver],
       enteredAt: null,
       deadlineAt: null,
@@ -168,6 +252,38 @@ async function resolveAllSteps(submitterUser) {
     });
   }
   return { steps };
+}
+
+// §7.4: when each `auto` field's source gets filled in.
+function computeAutoValue(source, ctx) {
+  switch (source) {
+    case 'submitter_name':
+      return ctx.submitter.name;
+    case 'submitter_department':
+      return ctx.submitter.department?.name ?? '';
+    case 'submitter_position':
+      return ctx.submitter.position?.name ?? '';
+    case 'submitter_email':
+      return ctx.submitter.email;
+    case 'form_name':
+      return ctx.formName;
+    case 'submitted_at':
+      return ctx.submittedAt ?? null;
+    case 'doc_number':
+      return ctx.docNumber ?? null;
+    default:
+      return null;
+  }
+}
+
+function buildAutoValues(elements, ctx) {
+  const result = {};
+  for (const el of elements) {
+    if (el.type !== 'auto') continue;
+    const val = computeAutoValue(el.props.source, ctx);
+    if (val !== null) result[el.id] = val;
+  }
+  return result;
 }
 
 // Submit (or resubmit after a recall/return) a draft. `values`, if given,
@@ -184,26 +300,47 @@ export async function submitDraft(id, empId, { values, expectedVersion } = {}) {
   if (draft.submitter.emp_id !== empId) throw new HttpError(403, 'ไม่มีสิทธิ์แก้ไขคำร้องนี้');
   if (draft.status !== 'draft') throw new HttpError(409, 'คำร้องนี้ไม่ได้อยู่ในสถานะร่าง');
 
-  if (values) draft.values = values;
+  const form = await getFormById(draft.formId);
+  if (!form) throw new HttpError(404, 'ไม่พบฟอร์มของคำร้องนี้');
+  // §7.1: closed blocks brand-new submissions, but a request already in
+  // flight (has a doc number — this is a resubmit after return/recall)
+  // still gets to finish ("คำร้องที่ค้างอยู่เดินต่อจนจบ").
+  if (form.status === 'closed' && !draft.docNumber) {
+    throw new HttpError(409, 'ฟอร์มนี้ปิดรับแล้ว ส่งคำร้องใหม่ไม่ได้');
+  }
 
-  const elements = elementsFor(draft);
+  const elements = draft.snapshot?.elements ?? form.elements;
+  if (values) draft.values = await resolveFileFields(elements, values, id, empId);
+
   const errors = validateValues(elements, draft.values);
   if (Object.keys(errors).length > 0) return { ok: false, errors, submission: draft };
 
   const submitterUser = await findUserByEmpId(empId);
   // §D.7: every step's approver is resolved before a doc number is spent —
   // blocking must happen before we issue one, not after.
-  const resolved = await resolveAllSteps(submitterUser);
+  const workflowSteps = draft.snapshot?.workflow?.steps ?? form.workflow.steps;
+  const resolved = await resolveAllSteps(workflowSteps, submitterUser);
   if (resolved.blocked) return { ok: false, blocked: resolved.blocked, submission: draft };
 
   const now = new Date();
   const isFirstSubmit = !draft.docNumber;
-  const docNumber = isFirstSubmit ? await nextDocNumber(getDb(), MEMO_DOC_PREFIX, { now }) : draft.docNumber;
+  const docNumber = isFirstSubmit ? await nextDocNumber(getDb(), form.docPrefix, { now }) : draft.docNumber;
   const submittedAt = isFirstSubmit ? now : draft.submittedAt;
   const round = (draft.rounds?.length || 0) + 1;
 
   const steps = resolved.steps;
   steps[0].enteredAt = now; // only the first step is "entered" at submit time
+
+  const snapshot = draft.snapshot ?? {
+    formName: form.name,
+    elements: form.elements,
+    workflow: form.workflow,
+    letterheadId: form.letterheadId,
+  };
+  const autoValues = {
+    ...draft.autoValues,
+    ...buildAutoValues(elements, { submitter: draft.submitter, formName: snapshot.formName, submittedAt, docNumber }),
+  };
 
   const result = await collection().findOneAndUpdate(
     { _id: draft._id, version: expectedVersion ?? draft.version, status: 'draft' },
@@ -213,9 +350,9 @@ export async function submitDraft(id, empId, { values, expectedVersion } = {}) {
         values: draft.values,
         docNumber,
         submittedAt,
-        formVersion: MEMO_FORM_VERSION,
-        snapshot: draft.snapshot ?? { formName: MEMO_FORM_NAME, elements: MEMO_ELEMENTS },
-        autoValues: { el_date: submittedAt },
+        formVersion: form.formVersion,
+        snapshot,
+        autoValues,
         current: {
           round,
           stepIndex: 0,
@@ -239,7 +376,7 @@ export async function submitDraft(id, empId, { values, expectedVersion } = {}) {
   await notifyMany(steps[0].approvers.map((a) => a.emp_id), {
     type: 'step_entered',
     subject: `${result.docNumber} รอคุณอนุมัติ`,
-    body: `${result.submitter.name} ส่ง "${subjectText(result)}" มาให้คุณตรวจ`,
+    body: `${result.submitter.name} ส่ง "${await subjectText(result)}" มาให้คุณตรวจ`,
     link: `/submissions/${result._id}`,
   });
 
@@ -411,7 +548,7 @@ export async function decideStep(id, empId, action, { comment = '', now = new Da
 // about it only when the workflow actually moves to them.
 async function sendDecideNotifications(submission, action, outcome, completedStepName, nextStep) {
   const link = `/submissions/${submission._id}`;
-  const subjectLine = `${submission.docNumber} — ${subjectText(submission)}`;
+  const subjectLine = `${submission.docNumber} — ${await subjectText(submission)}`;
 
   if (action === 'return') {
     await notify(submission.submitter.emp_id, {
@@ -653,7 +790,7 @@ export async function resubmitFrom(id, empId) {
     throw new HttpError(409, 'ยื่นใหม่ได้เฉพาะคำร้องที่จบแล้ว');
   }
   const user = await findUserByEmpId(empId);
-  const draft = await createDraft(user);
+  const draft = await createDraft(user, original.formId);
   await collection().updateOne({ _id: draft._id }, { $set: { values: original.values, updatedAt: new Date() } });
   return { ...draft, values: original.values };
 }
@@ -683,7 +820,7 @@ export async function addComment(id, empId, name, text, { now = new Date() } = {
   const recipients = [...relatedEmpIds(submission)].filter((e) => e !== empId);
   await notifyMany(recipients, {
     type: 'comment',
-    subject: `ความเห็นใหม่ใน ${submission.docNumber || subjectText(submission)}`,
+    subject: `ความเห็นใหม่ใน ${submission.docNumber || (await subjectText(submission))}`,
     body: `${name}: ${trimmed}`,
     link: `/submissions/${submission._id}`,
   });
