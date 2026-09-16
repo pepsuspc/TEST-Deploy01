@@ -29,6 +29,29 @@ const errs = typeof errors === 'undefined' ? {} : errors;
     <% if (typeof blocked !== 'undefined' && blocked) { %>
       <div class="a4-error-summary no-print"><%= blocked %></div>
     <% } %>
+
+    <% if (typeof submitterChoiceSlots !== 'undefined' && submitterChoiceSlots.length > 0) { %>
+      <div class="action-panel no-print">
+        <h3>สายอนุมัติ</h3>
+        <p class="designer-hint">เลือกผู้รับสำหรับแต่ละขั้นก่อนส่ง — คำร้องจะเดินไปหาคนที่เลือกไว้นี้</p>
+        <% submitterChoiceSlots.forEach(function (slot) { %>
+          <% const chosen = (submission.submitterChoices && submission.submitterChoices[slot.stepId] && submission.submitterChoices[slot.stepId][0]) || ''; %>
+          <div class="props-field">
+            <label for="choice_<%= slot.stepId %>"><%= slot.label %> (ขั้น "<%= slot.stepName %>")</label>
+            <select id="choice_<%= slot.stepId %>" name="submitterChoices[<%= slot.stepId %>][]" class="a4-input" form="memo-form">
+              <option value="">— เลือก —</option>
+              <% choiceEmployees.forEach(function (emp) { %>
+                <% if (!slot.restrictDepartment || (emp.department && emp.department.id === slot.restrictDepartment)) { %>
+                  <option value="<%= emp.emp_id %>" <%= chosen === emp.emp_id ? 'selected' : '' %>>
+                    <%= emp.name %><%= emp.department ? ' — ' + emp.department.name : '' %>
+                  </option>
+                <% } %>
+              <% }) %>
+            </select>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
   <% } else { %>
     <div class="a4-toolbar no-print">
       <span class="a4-save-status">
@@ -281,5 +304,6 @@ const errs = typeof errors === 'undefined' ? {} : errors;
   <script src="/js/autosave.js"></script>
   <script src="/js/file-field.js"></script>
   <script src="/js/table-field.js"></script>
+  <script src="/js/submit-confirm.js"></script>
 <% } %>
 <%- include('partials/foot') %>

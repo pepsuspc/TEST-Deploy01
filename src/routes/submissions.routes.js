@@ -5,20 +5,33 @@ import {
   saveDraftValues,
   deleteDraft,
   submitDraft,
+  previewResolvedSteps,
   decideStep,
   recallDecision,
   cancelSubmission,
   resubmitFrom,
   addComment,
   formContextFor,
+  submitterChoiceSlots,
   isRelatedToSubmission,
   canDecide,
   canRecall,
   canCancel,
   buildTimeline,
 } from '../models/submissions.js';
+import { orgApi } from '../org/client.js';
 import { HttpError } from '../lib/httpError.js';
 import { writeAuditLog } from '../models/auditLog.js';
+
+// §10.3: fetch the employee list only when the form actually has a
+// submitter_choice slot to fill -- no need to hit the org API on every
+// edit-page load otherwise.
+async function loadChoiceContext(workflowSteps) {
+  const slots = submitterChoiceSlots(workflowSteps);
+  if (slots.length === 0) return { slots, employees: [] };
+  const employees = await orgApi.allEmployees({ active: '1' });
+  return { slots, employees };
+}
 
 export const submissionsRouter = Router();
 
@@ -54,7 +67,8 @@ submissionsRouter.get(
     if (submission.status !== 'draft') {
       throw new HttpError(409, 'คำร้องนี้ไม่ได้อยู่ในสถานะร่างแล้ว — เปิดดูแทน');
     }
-    const { elements, formName } = await formContextFor(submission);
+    const { elements, formName, workflowSteps } = await formContextFor(submission);
+    const { slots, employees } = await loadChoiceContext(workflowSteps);
     res.render('memo-a4', {
       mode: 'edit',
       submission,
@@ -62,6 +76,8 @@ submissionsRouter.get(
       formName,
       errors: {},
       user: req.user,
+      submitterChoiceSlots: slots,
+      choiceEmployees: employees,
     });
   }),
 );
@@ -84,13 +100,29 @@ submissionsRouter.post(
 // recall/cancel/comment below are the meaningful, infrequent actions §12
 // actually cares about seeing a trail of.)
 
+// §10.3 "หน้ายืนยัน": resolve-only, no side effects -- lets the edit page
+// show who this will actually go to before the real submit.
+submissionsRouter.post(
+  '/:id/resolve-preview',
+  asyncHandler(async (req, res) => {
+    const result = await previewResolvedSteps(req.params.id, req.user.emp_id, req.body.submitterChoices || {});
+    res.json(result);
+  }),
+);
+
 submissionsRouter.post(
   '/:id/submit',
   asyncHandler(async (req, res) => {
     const values = req.body.values || {};
-    const result = await submitDraft(req.params.id, req.user.emp_id, { values, expectedVersion: clientVersion(req) });
+    const submitterChoices = req.body.submitterChoices || {};
+    const result = await submitDraft(req.params.id, req.user.emp_id, {
+      values,
+      submitterChoices,
+      expectedVersion: clientVersion(req),
+    });
     if (!result.ok) {
-      const { elements, formName } = await formContextFor(result.submission);
+      const { elements, formName, workflowSteps } = await formContextFor(result.submission);
+      const { slots, employees } = await loadChoiceContext(workflowSteps);
       return res.status(422).render('memo-a4', {
         mode: 'edit',
         submission: result.submission,
@@ -99,6 +131,8 @@ submissionsRouter.post(
         errors: result.errors || {},
         blocked: result.blocked,
         user: req.user,
+        submitterChoiceSlots: slots,
+        choiceEmployees: employees,
       });
     }
     await writeAuditLog({

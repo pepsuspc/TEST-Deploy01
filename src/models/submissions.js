@@ -9,6 +9,7 @@ import { getDb } from '../db/connection.js';
 import { findUserByEmpId } from './users.js';
 import { getFormById } from './forms.js';
 import { attachFilesToSubmission } from './files.js';
+import { orgApi } from '../org/client.js';
 import { nextDocNumber } from '../domain/docNumber.js';
 import { validateValues } from '../domain/validateField.js';
 import { evaluateStep } from '../domain/evaluateStep.js';
@@ -68,6 +69,7 @@ export async function createDraft(user, formId) {
     current: null,
     rounds: [],
     comments: [],
+    submitterChoices: {},
     createdAt: now,
     updatedAt: now,
     submittedAt: null,
@@ -158,11 +160,27 @@ export async function formContextFor(submission) {
       elements: submission.snapshot.elements,
       formName: submission.snapshot.formName,
       letterheadId: submission.snapshot.letterheadId ?? null,
+      workflowSteps: submission.snapshot.workflow?.steps ?? [],
     };
   }
   const form = await getFormById(submission.formId);
-  if (!form) return { elements: [], formName: '(ไม่พบฟอร์ม)', letterheadId: null };
-  return { elements: form.elements, formName: form.name, letterheadId: form.letterheadId };
+  if (!form) return { elements: [], formName: '(ไม่พบฟอร์ม)', letterheadId: null, workflowSteps: [] };
+  return { elements: form.elements, formName: form.name, letterheadId: form.letterheadId, workflowSteps: form.workflow.steps };
+}
+
+// §10.3: "ถ้าสายอนุมัติมี submitter_choice แสดงช่องเลือกคนตรงนี้ก่อนส่ง"
+// — which steps need the submitter to pick someone, and what to label
+// that dropdown.
+export function submitterChoiceSlots(workflowSteps) {
+  const slots = [];
+  for (const step of workflowSteps) {
+    for (const approver of step.approvers) {
+      if (approver.type === 'submitter_choice') {
+        slots.push({ stepId: step.id, stepName: step.name, label: approver.label || step.name, restrictDepartment: approver.restrictDepartment || null });
+      }
+    }
+  }
+  return slots;
 }
 
 // §8.8: turn each `file`-type field's client-supplied fileId list into
@@ -209,12 +227,10 @@ export async function deleteDraft(id, empId) {
 }
 
 // Resolve one workflow-step-definition's approvers into real people
-// (§7.5/§D.7). Chunk 2 supports the two rules a form's workflow can
-// actually contain so far: `relative:chief` and a fixed `user`. The full
-// 3-type resolver — `relative:department_head`, `submitter_choice`, N-of-M
-// dedup across multiple approvers in one step — is chunk 3; every step
-// today has exactly one approver, so quorum is always 1-of-1.
-async function resolveOneApprover(approverDef, submitterUser, stepName) {
+// (§7.5/§D.7) — all 3 approver types now: a fixed `user`, `relative`
+// (`chief` or `department_head`), and `submitter_choice` (whoever the
+// submitter picked for that slot, passed in as submitterChoiceEmpId).
+async function resolveOneApprover(approverDef, submitterUser, stepName, submitterChoiceEmpId) {
   if (approverDef.type === 'relative' && approverDef.relation === 'chief') {
     const chief = submitterUser.chief;
     if (!chief?.emp_id) return { blocked: 'ไม่พบหัวหน้าโดยตรงของคุณในระบบ ติดต่อฝ่ายไอที' };
@@ -224,6 +240,19 @@ async function resolveOneApprover(approverDef, submitterUser, stepName) {
     }
     return { approver: { emp_id: chief.emp_id, name: chiefUser?.name ?? chief.name, source: 'relative:chief' } };
   }
+  if (approverDef.type === 'relative' && approverDef.relation === 'department_head') {
+    const deptId = submitterUser.department?.id;
+    if (!deptId) return { blocked: 'คุณยังไม่ได้สังกัดแผนกในระบบ ติดต่อฝ่ายไอที' };
+    const dept = (await orgApi.departments()).find((d) => d.id === deptId);
+    if (!dept?.head?.emp_id) {
+      return { blocked: `แผนก${dept ? ' ' + dept.name : ''} ยังไม่ได้ตั้งหัวหน้าแผนก ติดต่อฝ่ายไอที` };
+    }
+    const headUser = await findUserByEmpId(dept.head.emp_id);
+    if (headUser && headUser.is_active === false) {
+      return { blocked: 'ผู้จัดการฝ่ายไม่ได้อยู่ในระบบแล้ว ติดต่อฝ่ายไอที' };
+    }
+    return { approver: { emp_id: dept.head.emp_id, name: headUser?.name ?? dept.head.name, source: 'relative:department_head' } };
+  }
   if (approverDef.type === 'user') {
     const user = await findUserByEmpId(approverDef.emp_id);
     if (!user || user.is_active === false) {
@@ -231,27 +260,64 @@ async function resolveOneApprover(approverDef, submitterUser, stepName) {
     }
     return { approver: { emp_id: user.emp_id, name: user.name, source: 'user' } };
   }
-  return { blocked: `ขั้น "${stepName}" ใช้กติกาผู้อนุมัติที่ยังไม่รองรับ (${approverDef.type}) — รอก้อนที่ 3` };
+  if (approverDef.type === 'submitter_choice') {
+    if (!submitterChoiceEmpId) {
+      return { blocked: `กรุณาเลือก${approverDef.label ? `"${approverDef.label}"` : 'ผู้รับ'} สำหรับขั้น "${stepName}"` };
+    }
+    const user = await findUserByEmpId(submitterChoiceEmpId);
+    if (!user || user.is_active === false) return { blocked: `ไม่พบพนักงานที่เลือกไว้สำหรับขั้น "${stepName}"` };
+    if (approverDef.restrictDepartment && user.department?.id !== approverDef.restrictDepartment) {
+      return { blocked: `ผู้ที่เลือกสำหรับขั้น "${stepName}" ต้องอยู่แผนกที่กำหนดไว้เท่านั้น` };
+    }
+    return { approver: { emp_id: user.emp_id, name: user.name, source: 'submitter_choice' } };
+  }
+  return { blocked: `ขั้น "${stepName}" ใช้กติกาผู้อนุมัติที่ไม่รู้จัก (${approverDef.type})` };
 }
 
-async function resolveAllSteps(workflowSteps, submitterUser) {
+// `submitterChoices` is `{ [stepId]: [empId, ...] }` (§11.3) — today the
+// UI only ever lets a submitter pick one person per submitter_choice slot,
+// so only the first entry is read; stored as an array to match the
+// spec's own schema and leave room for picking more than one later.
+export async function resolveAllSteps(workflowSteps, submitterUser, submitterChoices = {}) {
   const steps = [];
   for (const stepDef of workflowSteps) {
-    // Chunk 2 forms only ever have exactly one approver per step (see
-    // forms.js's default workflow); resolve it and dedup is chunk 3.
-    const resolved = await resolveOneApprover(stepDef.approvers[0], submitterUser, stepDef.name);
-    if (resolved.blocked) return { blocked: resolved.blocked };
+    const resolvedApprovers = [];
+    for (const approverDef of stepDef.approvers) {
+      const choiceEmpId = submitterChoices[stepDef.id]?.[0];
+      const resolved = await resolveOneApprover(approverDef, submitterUser, stepDef.name, choiceEmpId);
+      if (resolved.blocked) return { blocked: resolved.blocked };
+      resolvedApprovers.push(resolved.approver);
+    }
+    // §7.5 dedup: the same person resolved via two different slots in the
+    // same step counts once, and quorum can never exceed the deduped M.
+    const deduped = [];
+    const seen = new Set();
+    for (const a of resolvedApprovers) {
+      if (seen.has(a.emp_id)) continue;
+      seen.add(a.emp_id);
+      deduped.push(a);
+    }
     steps.push({
       stepId: stepDef.id,
       name: stepDef.name,
-      quorum: stepDef.quorum,
-      approvers: [resolved.approver],
+      quorum: Math.min(stepDef.quorum, deduped.length),
+      approvers: deduped,
+      deadlineDays: stepDef.deadlineDays ?? null,
       enteredAt: null,
       deadlineAt: null,
       decisions: [],
     });
   }
   return { steps };
+}
+
+// §8.6: a step's deadline is `deadlineDays` calendar days from whenever it
+// was (re-)entered — recomputed fresh every time `enteredAt` resets
+// (initial submit, advancing to the next step, or a recall bringing the
+// workflow back to an earlier step), never carried over from before.
+function deadlineAtFor(deadlineDays, enteredAt) {
+  if (!deadlineDays) return null;
+  return new Date(enteredAt.getTime() + deadlineDays * 24 * 60 * 60 * 1000);
 }
 
 // §7.4: when each `auto` field's source gets filled in.
@@ -286,6 +352,24 @@ function buildAutoValues(elements, ctx) {
   return result;
 }
 
+// §10.3: "หน้ายืนยัน" — resolve the workflow WITHOUT committing anything,
+// so the edit page can show the submitter exactly who this will go to
+// before they actually send it. Read-only: no doc number spent, no
+// writes at all.
+export async function previewResolvedSteps(id, empId, submitterChoices = {}) {
+  const draft = await getSubmissionById(id);
+  if (!draft) throw new HttpError(404, 'ไม่พบคำร้อง');
+  if (draft.submitter.emp_id !== empId) throw new HttpError(403, 'ไม่มีสิทธิ์');
+  const { workflowSteps } = await formContextFor(draft);
+  const submitterUser = await findUserByEmpId(empId);
+  const resolved = await resolveAllSteps(workflowSteps, submitterUser, submitterChoices);
+  if (resolved.blocked) return { ok: false, blocked: resolved.blocked };
+  return {
+    ok: true,
+    steps: resolved.steps.map((s) => ({ name: s.name, quorum: s.quorum, approvers: s.approvers.map((a) => a.name) })),
+  };
+}
+
 // Submit (or resubmit after a recall/return) a draft. `values`, if given,
 // is whatever's currently in the edit form — merged in as part of the same
 // atomic transition rather than a separate save-then-submit write, so a
@@ -294,7 +378,7 @@ function buildAutoValues(elements, ctx) {
 //   { ok: false, errors }   -- field validation failed
 //   { ok: false, blocked }  -- an approver couldn't be resolved (§D.7)
 //   { ok: true, submission }
-export async function submitDraft(id, empId, { values, expectedVersion } = {}) {
+export async function submitDraft(id, empId, { values, expectedVersion, submitterChoices } = {}) {
   const draft = await getSubmissionById(id);
   if (!draft) throw new HttpError(404, 'ไม่พบคำร้อง');
   if (draft.submitter.emp_id !== empId) throw new HttpError(403, 'ไม่มีสิทธิ์แก้ไขคำร้องนี้');
@@ -319,7 +403,8 @@ export async function submitDraft(id, empId, { values, expectedVersion } = {}) {
   // §D.7: every step's approver is resolved before a doc number is spent —
   // blocking must happen before we issue one, not after.
   const workflowSteps = draft.snapshot?.workflow?.steps ?? form.workflow.steps;
-  const resolved = await resolveAllSteps(workflowSteps, submitterUser);
+  const choices = submitterChoices ?? draft.submitterChoices ?? {};
+  const resolved = await resolveAllSteps(workflowSteps, submitterUser, choices);
   if (resolved.blocked) return { ok: false, blocked: resolved.blocked, submission: draft };
 
   const now = new Date();
@@ -330,6 +415,7 @@ export async function submitDraft(id, empId, { values, expectedVersion } = {}) {
 
   const steps = resolved.steps;
   steps[0].enteredAt = now; // only the first step is "entered" at submit time
+  steps[0].deadlineAt = deadlineAtFor(steps[0].deadlineDays, now);
 
   const snapshot = draft.snapshot ?? {
     formName: form.name,
@@ -350,6 +436,7 @@ export async function submitDraft(id, empId, { values, expectedVersion } = {}) {
         values: draft.values,
         docNumber,
         submittedAt,
+        submitterChoices: choices,
         formVersion: form.formVersion,
         snapshot,
         autoValues,
@@ -360,7 +447,7 @@ export async function submitDraft(id, empId, { values, expectedVersion } = {}) {
           stepName: steps[0].name,
           approverEmpIds: steps[0].approvers.map((a) => a.emp_id),
           enteredAt: now,
-          deadlineAt: null,
+          deadlineAt: steps[0].deadlineAt,
         },
         updatedAt: now,
       },
@@ -505,9 +592,11 @@ export async function decideStep(id, empId, action, { comment = '', now = new Da
       nextStep = submission.rounds[roundIdx].steps[nextStepIdx];
       if (nextStep) {
         outcome = 'passed-advance';
+        const nextDeadlineAt = deadlineAtFor(nextStep.deadlineDays, now);
         setFields = {
           ...setFields,
           [`rounds.${roundIdx}.steps.${nextStepIdx}.enteredAt`]: now,
+          [`rounds.${roundIdx}.steps.${nextStepIdx}.deadlineAt`]: nextDeadlineAt,
           current: {
             round: submission.current.round,
             stepIndex: nextStepIdx,
@@ -515,7 +604,7 @@ export async function decideStep(id, empId, action, { comment = '', now = new Da
             stepName: nextStep.name,
             approverEmpIds: nextStep.approvers.map((a) => a.emp_id),
             enteredAt: now,
-            deadlineAt: null,
+            deadlineAt: nextDeadlineAt,
           },
         };
       } else {
@@ -658,6 +747,7 @@ export async function recallDecision(id, empId, { now = new Date(), expectedVers
         $set: {
           [`rounds.${roundIdx}.steps.${stepIdx}.decisions.$[d].recalledAt`]: now,
           [`rounds.${roundIdx}.steps.${stepIdx}.enteredAt`]: now,
+          [`rounds.${roundIdx}.steps.${stepIdx}.deadlineAt`]: deadlineAtFor(step.deadlineDays, now),
           status: 'pending',
           current: {
             round: submission.current.round,
@@ -666,7 +756,7 @@ export async function recallDecision(id, empId, { now = new Date(), expectedVers
             stepName: step.name,
             approverEmpIds: step.approvers.map((a) => a.emp_id),
             enteredAt: now,
-            deadlineAt: null,
+            deadlineAt: deadlineAtFor(step.deadlineDays, now),
           },
           updatedAt: now,
         },

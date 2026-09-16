@@ -7,9 +7,13 @@
 // "check if it exists, insert if not" needs no migration runner.
 //
 // Elements match appendix B, now complete with the table/file rows chunk 1
-// deliberately left out (those types didn't exist yet); the workflow
-// matches §8.10's walkthrough exactly (chief, then ศรัญญา/E003) so that
-// example stays reproducible against the real seeded form.
+// deliberately left out (those types didn't exist yet). The workflow now
+// matches §8.10's walkthrough AND §7.5's own example exactly: step 1 is
+// the submitter's chief, step 2 is `submitter_choice` labeled "เรียน" —
+// chunk 1/2 used a hardcoded `user: E003` for step 2 as a deliberate
+// stand-in before the submitter_choice mechanism existed; now that chunk 3
+// builds it for real, ศรัญญา (E003) is just the person a submitter
+// *picks* rather than someone wired into the form definition.
 
 import { getDb } from './connection.js';
 
@@ -53,7 +57,7 @@ const MEMO_ELEMENTS = [
 
 const MEMO_WORKFLOW_STEPS = [
   { id: 's1', name: 'ผู้ตรวจสอบ', quorum: 1, approvers: [{ type: 'relative', relation: 'chief' }], deadlineDays: 3 },
-  { id: 's2', name: 'ผู้อนุมัติ', quorum: 1, approvers: [{ type: 'user', emp_id: 'E003' }], deadlineDays: null },
+  { id: 's2', name: 'ผู้อนุมัติ', quorum: 1, approvers: [{ type: 'submitter_choice', label: 'เรียน', restrictDepartment: null }], deadlineDays: null },
 ];
 
 export async function seedMemoForm(adminEmpId) {
