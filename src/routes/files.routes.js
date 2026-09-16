@@ -20,6 +20,22 @@ function asyncHandler(fn) {
   return (req, res, next) => fn(req, res, next).catch(next);
 }
 
+// §15 test 18 (a Thai filename with spaces must round-trip unchanged):
+// multer's underlying multipart parser (busboy) decodes every part header
+// — including the filename — as Latin-1 by default, per the old RFC 2388.
+// Real browsers (and curl, and Node's own fetch/FormData) all send the
+// filename as raw UTF-8 bytes now, so a name like "ทดสอบ ไฟล์.pdf" arrives
+// byte-for-byte correct but gets *misread* one byte at a time as Latin-1,
+// producing mojibake ("à¸..."). Found live: a fresh-clone walkthrough
+// downloaded a file and got back a name that was neither the original nor
+// obviously broken-looking in a raw HTTP response — decoding the actual
+// stored bytes was what showed it was corrupted, not the download step.
+// Re-decoding here (Latin-1 bytes -> UTF-8 text) undoes exactly that
+// mis-decode; it's a no-op for a pure-ASCII filename either way.
+export function fixMultipartFilename(name) {
+  return Buffer.from(name, 'latin1').toString('utf8');
+}
+
 // §8.8 upload flow: one file per request, immediately on selection —
 // not deferred to when the form itself is saved.
 filesRouter.post(
@@ -39,7 +55,7 @@ filesRouter.post(
     }
     const result = await saveUploadedFile({
       buffer: req.file.buffer,
-      originalName: req.file.originalname,
+      originalName: fixMultipartFilename(req.file.originalname),
       uploadedBy: req.user.emp_id,
       allowedExts,
     });
