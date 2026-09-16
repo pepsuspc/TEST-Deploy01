@@ -1,0 +1,62 @@
+<%- include('partials/head', {title: 'กล่องงาน'}) %>
+<body>
+<%- include('partials/topbar', {user}) %>
+<main class="page">
+  <div class="inbox-header">
+    <h1>กล่องงาน</h1>
+    <a href="/submissions/new" class="button">+ ยื่นคำร้อง</a>
+  </div>
+
+  <div class="tabs">
+    <a href="/inbox?tab=pending" class="tab <%= tab === 'pending' ? 'active' : '' %>">รอฉันอนุมัติ (<%= pending.length %>)</a>
+    <a href="/inbox?tab=mine" class="tab <%= tab === 'mine' ? 'active' : '' %>">คำร้องของฉัน (<%= mine.length %>)</a>
+  </div>
+
+  <% if (tab === 'pending') { %>
+    <% if (pending.length === 0) { %>
+      <p class="empty-state">ไม่มีคำร้องรอคุณอนุมัติ</p>
+    <% } else { %>
+      <ul class="inbox-list">
+        <% pending.forEach(function (s) { %>
+          <% const round = s.rounds[s.rounds.length - 1]; %>
+          <li>
+            <a href="/submissions/<%= s._id %>" class="inbox-row">
+              <span class="inbox-docnum"><%= s.docNumber %></span>
+              <span class="inbox-subject"><%= subjectText(s) %></span>
+              <span class="inbox-submitter">
+                <%= s.submitter.name %><%= s.submitter.department ? ' · ' + s.submitter.department.name : '' %>
+              </span>
+              <span class="inbox-step"><%= s.current.stepName %> (<%= s.current.stepIndex + 1 %>/<%= round.steps.length %>)</span>
+              <span class="inbox-waited <%= isOverdue(s) ? 'is-overdue' : '' %>">
+                <% if (isOverdue(s)) { %><span class="overdue-badge">เกินกำหนด</span> <% } %><%= humanizeWaited(s.current.enteredAt) %>
+              </span>
+            </a>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+  <% } else { %>
+    <% if (mine.length === 0) { %>
+      <p class="empty-state">คุณยังไม่เคยยื่นคำร้อง</p>
+    <% } else { %>
+      <ul class="inbox-list">
+        <% mine.forEach(function (s) { %>
+          <li>
+            <a href="/submissions/<%= s._id %>" class="inbox-row">
+              <span class="inbox-docnum"><%= s.docNumber || '(ร่าง)' %></span>
+              <span class="inbox-subject"><%= subjectText(s) || '(ยังไม่มีชื่อเรื่อง)' %></span>
+              <span class="inbox-status-badge status-<%= s.status %>"><%= STATUS_LABEL[s.status] %></span>
+              <% if (s.status === 'pending') { %>
+                <span class="inbox-step"><%= s.current.stepName %></span>
+                <span class="inbox-waited <%= isOverdue(s) ? 'is-overdue' : '' %>">
+                  <% if (isOverdue(s)) { %><span class="overdue-badge">เกินกำหนด</span> <% } %><%= humanizeWaited(s.current.enteredAt) %>
+                </span>
+              <% } %>
+            </a>
+          </li>
+        <% }) %>
+      </ul>
+    <% } %>
+  <% } %>
+</main>
+<%- include('partials/foot') %>

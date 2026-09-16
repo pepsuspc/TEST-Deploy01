@@ -4,8 +4,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { healthRouter } from './routes/health.routes.js';
 import { authRouter } from './routes/auth.routes.js';
+import { submissionsRouter } from './routes/submissions.routes.js';
 import { sessionMiddleware, requireAuth } from './auth/session.js';
 import { findUserByEmpId } from './models/users.js';
+import { formatThaiDate } from './domain/thaiDate.js';
+import { STATUS_LABEL } from './domain/statusLabels.js';
+import { inboxRouter } from './routes/inbox.routes.js';
+import { HttpError } from './lib/httpError.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,6 +19,8 @@ export function createApp() {
 
   app.set('view engine', 'ejs');
   app.set('views', path.join(__dirname, 'views'));
+  app.locals.formatThaiDate = formatThaiDate;
+  app.locals.STATUS_LABEL = STATUS_LABEL;
 
   // Static files and /healthz need no login (§12.1).
   app.use(express.static(path.join(__dirname, 'public')));
@@ -36,7 +43,24 @@ export function createApp() {
     res.render('home', { user: res.locals.user });
   });
 
+  app.use('/submissions', submissionsRouter);
+  app.use('/inbox', inboxRouter);
+
+  app.use((req, res) => {
+    res.status(404).render('error', { status: 404, message: 'ไม่พบหน้านี้' });
+  });
+
+  app.use(errorHandler);
+
   return app;
+}
+
+function errorHandler(err, req, res, next) {
+  if (err instanceof HttpError) {
+    return res.status(err.status).render('error', { status: err.status, message: err.message });
+  }
+  console.error(err);
+  res.status(500).render('error', { status: 500, message: 'เกิดข้อผิดพลาดที่ไม่คาดคิด' });
 }
 
 // §13: log every request — method, path, status, ms, emp_id.

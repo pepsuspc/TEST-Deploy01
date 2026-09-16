@@ -1,0 +1,178 @@
+<%
+// STATUS_LABEL comes from app.locals (domain/statusLabels.js) automatically.
+const errs = typeof errors === 'undefined' ? {} : errors;
+const formName = submission.snapshot ? submission.snapshot.formName : 'MEMO ขออนุมัติ';
+%>
+<%- include('partials/head', {title: formName}) %>
+<body>
+<%- include('partials/topbar', {user}) %>
+<main class="page-a4-container">
+
+  <% if (mode === 'edit') { %>
+    <div class="a4-toolbar no-print">
+      <button type="button" id="btn-save" class="button secondary" form="memo-form" formaction="/submissions/<%= submission._id %>/save" formmethod="POST">บันทึกร่าง</button>
+      <span id="save-status" class="a4-save-status"></span>
+      <span style="flex:1"></span>
+      <a href="/submissions/<%= submission._id %>" class="button secondary">ดูตัวอย่าง</a>
+      <% if (!submission.docNumber) { %>
+        <form method="POST" action="/submissions/<%= submission._id %>/delete" onsubmit="return confirm('ลบร่างนี้? ลบแล้วกู้คืนไม่ได้');" style="display:inline">
+          <button type="submit" class="button danger">ลบร่าง</button>
+        </form>
+      <% } %>
+      <button type="submit" class="button" form="memo-form" formaction="/submissions/<%= submission._id %>/submit" formmethod="POST">ส่ง</button>
+    </div>
+
+    <% if (Object.keys(errs).length > 0) { %>
+      <div class="a4-error-summary no-print">กรุณาตรวจสอบ <%= Object.keys(errs).length %> รายการ</div>
+    <% } %>
+    <% if (typeof blocked !== 'undefined' && blocked) { %>
+      <div class="a4-error-summary no-print"><%= blocked %></div>
+    <% } %>
+  <% } else { %>
+    <div class="a4-toolbar no-print">
+      <span class="a4-save-status">
+        สถานะ: <strong><%= STATUS_LABEL[submission.status] %></strong>
+        <% if (submission.docNumber) { %> · <%= submission.docNumber %><% } %>
+      </span>
+      <span style="flex:1"></span>
+      <% if (submission.status === 'draft' && submission.submitter.emp_id === user.emp_id) { %>
+        <a href="/submissions/<%= submission._id %>/edit" class="button secondary">แก้ไขร่าง</a>
+      <% } %>
+      <button type="button" class="button secondary" onclick="window.print()">พิมพ์</button>
+    </div>
+
+    <% if (canDecide) { %>
+      <div class="action-panel no-print">
+        <form method="POST" action="/submissions/<%= submission._id %>/decide">
+          <input type="hidden" name="version" value="<%= submission.version %>">
+          <label for="decide-comment">ความเห็น <span class="a4-save-status">(บังคับ ≥ 5 ตัวอักษร สำหรับ "ไม่อนุมัติ"/"ส่งกลับแก้ไข")</span></label>
+          <textarea id="decide-comment" name="comment" rows="2" class="a4-input"></textarea>
+          <div class="action-panel-buttons">
+            <button type="submit" name="action" value="approve" class="button">อนุมัติ</button>
+            <button type="submit" name="action" value="reject" class="button danger">ไม่อนุมัติ</button>
+            <button type="submit" name="action" value="return" class="button secondary">ส่งกลับแก้ไข</button>
+          </div>
+        </form>
+      </div>
+    <% } %>
+    <% if (canRecall) { %>
+      <form method="POST" action="/submissions/<%= submission._id %>/recall" class="action-panel no-print"
+            onsubmit="return confirm('ดึงกลับการกระทำล่าสุดของคุณในขั้นนี้?');">
+        <input type="hidden" name="version" value="<%= submission.version %>">
+        <button type="submit" class="button secondary">ดึงกลับ</button>
+      </form>
+    <% } %>
+    <% if (canCancel) { %>
+      <form method="POST" action="/submissions/<%= submission._id %>/cancel" class="action-panel no-print"
+            onsubmit="return confirm('ยกเลิกคำร้องนี้? ยกเลิกแล้วกู้คืนไม่ได้');">
+        <input type="hidden" name="version" value="<%= submission.version %>">
+        <button type="submit" class="button danger">ยกเลิกคำร้อง</button>
+      </form>
+    <% } %>
+  <% } %>
+
+  <form id="memo-form" data-save-url="/submissions/<%= submission._id %>/save">
+    <input type="hidden" id="version-field" name="version" value="<%= submission.version %>">
+  <div class="a4-page-wrap">
+    <div class="a4-page">
+      <% if (mode === 'view' && submission.status !== 'draft') { %>
+        <div class="a4-watermark <%= submission.status === 'pending' ? 'is-neutral' : '' %>">
+          <% if (submission.status !== 'approved') { %><%= STATUS_LABEL[submission.status] %><% } %>
+        </div>
+      <% } else if (mode === 'view' && submission.status === 'draft') { %>
+        <div class="a4-watermark is-neutral">ร่าง</div>
+      <% } %>
+
+      <div class="a4-letterhead">
+        <div class="a4-letterhead-logo"></div>
+        <div class="a4-letterhead-company">ชื่อบริษัท (ตัวอย่าง — ตั้งค่าจริงในหน้า admin ของก้อนที่ 4)<br>ที่อยู่บริษัท</div>
+      </div>
+
+      <div class="a4-title-bar">
+        <div></div>
+        <div class="a4-form-title"><%= formName %></div>
+        <div class="a4-doc-number"><%= submission.docNumber || '(ยังไม่มีเลขที่)' %></div>
+      </div>
+
+      <div class="a4-grid">
+        <% elements.forEach(function (el) { %>
+          <% const value = submission.values ? submission.values[el.id] : undefined; %>
+          <div class="a4-field" style="grid-column: <%= el.col %> / span <%= el.colSpan %>;">
+
+            <% if (el.type === 'short_text') { %>
+              <label class="a4-field-label" for="f_<%= el.id %>">
+                <%= el.props.label %><% if (el.props.required) { %> <span class="a4-required">*</span><% } %>
+              </label>
+              <% if (mode === 'edit') { %>
+                <input class="a4-input" type="text" id="f_<%= el.id %>" name="values[<%= el.id %>]"
+                       maxlength="<%= el.props.maxLength || 200 %>" value="<%= value || '' %>">
+              <% } else { %>
+                <div class="a4-value <%= el.align === 'right' ? 'a4-align-right' : '' %>"><%= value || '—' %></div>
+              <% } %>
+
+            <% } else if (el.type === 'long_text') { %>
+              <label class="a4-field-label" for="f_<%= el.id %>">
+                <%= el.props.label %><% if (el.props.required) { %> <span class="a4-required">*</span><% } %>
+              </label>
+              <% if (mode === 'edit') { %>
+                <textarea class="a4-input" id="f_<%= el.id %>" name="values[<%= el.id %>]"
+                          rows="<%= el.props.rows || 4 %>" maxlength="<%= el.props.maxLength || 5000 %>"><%= value || '' %></textarea>
+              <% } else { %>
+                <div class="a4-value"><%= value || '—' %></div>
+              <% } %>
+
+            <% } else if (el.type === 'select_many') { %>
+              <% if (el.props.label) { %>
+                <label class="a4-field-label"><%= el.props.label %></label>
+              <% } %>
+              <% const selected = Array.isArray(value) ? value : []; %>
+              <% if (mode === 'edit') { %>
+                <div class="a4-checkbox-row">
+                  <% el.props.options.forEach(function (opt, i) { %>
+                    <label>
+                      <input type="checkbox" name="values[<%= el.id %>][]" value="<%= opt %>" <%= selected.includes(opt) ? 'checked' : '' %>>
+                      <%= opt %>
+                    </label>
+                  <% }) %>
+                </div>
+              <% } else { %>
+                <div class="a4-checkmarks">
+                  <% el.props.options.forEach(function (opt) { %>
+                    <span><%= selected.includes(opt) ? '☑' : '☐' %> <%= opt %></span>
+                  <% }) %>
+                </div>
+              <% } %>
+
+            <% } else if (el.type === 'auto') { %>
+              <label class="a4-field-label"><%= el.props.label %></label>
+              <%
+                // §a4-value uses white-space:pre-wrap (to preserve long_text
+                // line breaks), so this has to be built as one single-line
+                // string — multi-line EJS control flow directly inside the
+                // div would leave literal blank lines in the rendered output.
+                let autoText = '';
+                if (el.props.source === 'submitted_at') {
+                  autoText = submission.submittedAt ? formatThaiDate(submission.submittedAt) : '(จะเติมอัตโนมัติตอนส่ง)';
+                }
+              %>
+              <div class="a4-value <%= el.align === 'right' ? 'a4-align-right' : '' %>"><%= autoText %></div>
+            <% } %>
+
+            <% if (errs[el.id]) { %>
+              <div class="a4-field-error"><%= errs[el.id] %></div>
+            <% } %>
+          </div>
+        <% }) %>
+      </div>
+
+      <%- include('partials/approval-table', { submission }) %>
+
+      <div class="a4-page-number no-print">หน้า 1/1</div>
+    </div>
+  </div>
+  </form>
+</main>
+<% if (mode === 'edit') { %>
+  <script src="/js/autosave.js"></script>
+<% } %>
+<%- include('partials/foot') %>

@@ -1,0 +1,11 @@
+<%- include('partials/head', {title: 'เกิดข้อผิดพลาด'}) %>
+<body>
+<% if (typeof user !== 'undefined' && user) { %>
+  <%- include('partials/topbar', {user}) %>
+<% } %>
+  <main class="page">
+    <h1><%= status %></h1>
+    <p><%= message %></p>
+    <p><a href="/">กลับหน้าแรก</a></p>
+  </main>
+<%- include('partials/foot') %>

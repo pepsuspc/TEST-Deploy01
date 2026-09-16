@@ -1,0 +1,41 @@
+<%
+// Auto-generated approval table (§8.7) — always the CURRENT round only;
+// older rounds belong in the timeline (§8.7: "แสดงเฉพาะรอบปัจจุบันบนกระดาษ").
+const RESULT_LABEL = {
+  approve: '✔ อนุมัติ',
+  reject: '✘ ไม่อนุมัติ',
+  return: '↩ ส่งกลับแก้ไข',
+};
+const round = submission.rounds && submission.rounds.length > 0
+  ? submission.rounds[submission.rounds.length - 1]
+  : null;
+%>
+<% if (round) { %>
+<table class="a4-approval-table">
+  <thead>
+    <tr><th>ขั้น</th><th>ผู้อนุมัติ</th><th>ผล</th><th>วันเวลา</th><th>ความเห็น</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ผู้จัดทำ</td>
+      <td><%= submission.submitter.name %><%= submission.submitter.department ? ' (' + submission.submitter.department.name + ')' : '' %></td>
+      <td>ส่งคำร้อง</td>
+      <td><%= submission.submittedAt ? formatThaiDate(submission.submittedAt, { withTime: true }) : '' %></td>
+      <td></td>
+    </tr>
+    <% round.steps.forEach(function (step) { %>
+      <% step.approvers.forEach(function (approver, idx) { %>
+        <% const activeDecisions = step.decisions.filter(function (d) { return d.emp_id === approver.emp_id && !d.recalledAt; }); %>
+        <% const decision = activeDecisions[activeDecisions.length - 1]; %>
+        <tr>
+          <td><%= idx === 0 ? step.name : '' %></td>
+          <td><%= approver.name %></td>
+          <td><%= decision ? (RESULT_LABEL[decision.action] || decision.action) : 'รอ' %></td>
+          <td><%= decision ? formatThaiDate(decision.at, { withTime: true }) : '' %></td>
+          <td><%= decision && decision.comment ? decision.comment : '' %></td>
+        </tr>
+      <% }) %>
+    <% }) %>
+  </tbody>
+</table>
+<% } %>

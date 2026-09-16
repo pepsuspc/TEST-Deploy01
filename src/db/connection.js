@@ -16,6 +16,13 @@ export function getDb() {
   return db;
 }
 
+// Test-only: point getDb() at an already-connected test database, bypassing
+// connectDb()/env.mongodbUri entirely (used by integration tests that need
+// a specific throwaway database rather than whatever dev/prod is pointed at).
+export function setDbForTest(testDb) {
+  db = testDb;
+}
+
 export async function closeDb() {
   await client.close();
   db = undefined;

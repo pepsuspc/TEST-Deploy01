@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node --env-file=.env src/server.js",
     "dev": "node --watch --env-file=.env src/server.js",
-    "test": "node --test test/"
+    "test": "node --env-file=.env --test test/"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",
