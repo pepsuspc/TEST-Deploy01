@@ -10,6 +10,21 @@
   padding: 2rem 1rem;
 }
 
+/* §13/§15.25 "A4 ย่อ+ซูม": the page keeps its real 210mm layout (every mm
+   measurement, the 24-col grid, print output — none of it changes) and
+   just shrinks as one whole unit to fit a phone screen. `zoom` (unlike
+   `transform: scale`) affects layout, not just paint, so the shrunk page
+   doesn't leave a huge blank scroll area the size of its original box —
+   the wrapper naturally sizes down with it. From there the user pinches
+   to zoom in on whatever field they need to read/fill, same as reading
+   any small print on a phone; this is why the fixed factor below doesn't
+   need to be "readable" on its own, just "the whole page fits without a
+   sideways scrollbar or turning the phone." */
+@media (max-width: 480px) {
+  .a4-page-wrap { padding: 0.75rem 0.5rem; }
+  .a4-page { zoom: 0.44; }
+}
+
 .a4-page {
   position: relative;
   width: 210mm;
@@ -271,6 +286,7 @@ textarea.a4-input {
     box-shadow: none;
     width: 210mm;
     min-height: 297mm;
+    zoom: 1; /* undo the mobile @media screen shrink — printing is always full-size */
   }
   @page {
     size: A4;

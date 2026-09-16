@@ -362,3 +362,37 @@ a { color: var(--color-primary); }
 .emp-search-item { padding: 0.4rem 0.6rem; cursor: pointer; font-size: 0.85rem; }
 .emp-search-item:hover { background: #f0f2f5; }
 .emp-search-empty { padding: 0.4rem 0.6rem; font-size: 0.85rem; color: var(--color-text-muted); }
+
+/* §13/§15.25: the golden path (login -> inbox -> open a submission ->
+   zoom in -> act) has to work at 375px with no horizontal rotation. The
+   A4 paper itself is handled separately in a4.css (it shrinks as one
+   whole unit via `zoom` rather than reflowing) — this block is the app
+   chrome around it: topbar, inbox list, and any plain data table wide
+   enough to need its own horizontal scroll instead of breaking the page. */
+@media (max-width: 480px) {
+  .page, .designer-page { padding: 0 0.75rem; }
+
+  .topbar {
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    padding: 0.6rem 0.85rem;
+  }
+  .topbar-nav { flex-basis: 100%; order: 3; gap: 0.75rem; flex-wrap: wrap; }
+  .topbar-user { flex-wrap: wrap; gap: 0.4rem 0.6rem; }
+  .notif-panel { width: min(320px, calc(100vw - 1.5rem)); right: -0.75rem; }
+
+  .inbox-header { flex-wrap: wrap; gap: 0.5rem; }
+
+  /* .inbox-row is a 5-column grid on desktop (docnum/subject/submitter/
+     step/waited as plain <span> children in document order) — at mobile
+     width it becomes a simple stack, which works unmodified for both the
+     "pending" and "mine" tab's slightly different set of spans since
+     flex just lays out whatever children are actually there. */
+  .inbox-row { display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; }
+  .inbox-waited { text-align: left; }
+
+  /* A data table wider than the screen (submissions list, audit log)
+     scrolls horizontally in place instead of squeezing illegibly or
+     blowing out the page width. */
+  table.a4-approval-table { display: block; overflow-x: auto; white-space: nowrap; }
+}

@@ -18,6 +18,12 @@ test('requireSameOrigin: POST with no Origin header passes through (SameSite=Lax
   assert.equal(called, true);
 });
 
+test('requireSameOrigin: POST with the literal string "null" as Origin passes through (observed from a real browser same-site form POST)', () => {
+  let called = false;
+  requireSameOrigin(fakeReq('POST', { origin: 'null', host: 'app.internal' }), {}, () => { called = true; });
+  assert.equal(called, true);
+});
+
 test('requireSameOrigin: POST with a matching Origin passes', () => {
   let called = false;
   requireSameOrigin(fakeReq('POST', { origin: 'https://app.internal', host: 'app.internal' }), {}, () => { called = true; });

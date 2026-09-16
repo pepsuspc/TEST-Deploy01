@@ -18,9 +18,12 @@ const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 export function requireSameOrigin(req, res, next) {
   if (!UNSAFE_METHODS.has(req.method)) return next();
   const origin = req.get('origin');
-  // No Origin header at all (some non-browser clients, or older browsers
-  // on a same-site plain form post) — SameSite=Lax is still the gate here.
-  if (!origin) return next();
+  // No Origin header, or the literal string "null" — sent by real
+  // browsers for some legitimate same-site navigations too (observed live
+  // from a plain <form> POST during testing, not just the sandboxed-iframe
+  // case this value is usually associated with) — SameSite=Lax remains
+  // the actual gate for either case.
+  if (!origin || origin === 'null') return next();
   let originHost;
   try {
     originHost = new URL(origin).host;
