@@ -15,8 +15,23 @@ docker compose up
 ```
 
 Open http://localhost:3000 — you'll land on a mock login page (since
-`AUTH_MODE=mock` in `.env.example`) listing 8 test employees from
-`mock/org/employees.json`. Pick one to log in as them.
+`AUTH_MODE=mock` in `.env.example`) listing the test employees from
+`mock/org/employees.json` (8 active + 1 deactivated, for testing rejected
+logins). Pick one to log in as them.
+
+**If you add/update an npm dependency**, the dev compose file bind-mounts
+your working tree over `/app` for hot-editing, with `node_modules` kept as
+its own anonymous Docker volume so your host's `node_modules` doesn't shadow
+what got installed in the image. That volume does **not** auto-refresh on
+`docker compose up --build` — rebuild AND recreate it explicitly:
+
+```bash
+docker compose up -d --build -V   # -V renews anonymous volumes
+```
+
+Otherwise the container keeps running against whatever `node_modules` existed
+the first time you ever ran `docker compose up`, silently missing anything
+added since (this bit us once already — see git log).
 
 ## Run it without Docker
 
@@ -33,6 +48,12 @@ npm run dev
 ```bash
 npm test
 ```
+
+Some tests (e.g. the doc-number counter) talk to a real MongoDB rather than
+a fake, because the thing being tested is concurrency-safety under real
+writes. Have `docker compose up` (or any MongoDB) running first; by default
+tests connect to `mongodb://localhost:27017/its_forms_test` — override with
+`TEST_MONGODB_URI` if yours is elsewhere.
 
 ## Environment variables
 
