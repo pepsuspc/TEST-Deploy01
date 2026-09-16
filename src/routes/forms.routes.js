@@ -6,6 +6,7 @@ import {
   getFormById,
   updateFormMeta,
   saveElements,
+  saveWorkflow,
   publishForm,
   closeForm,
   reopenForm,
@@ -108,6 +109,28 @@ manageFormsRouter.post(
     const elements = JSON.parse(req.body.elements || '[]');
     const form = await saveElements(req.params.id, req.user.emp_id, elements);
     res.json({ ok: true, formVersion: form.formVersion, updatedAt: form.updatedAt });
+  }),
+);
+
+// §10.6 "สายอนุมัติ" tab (§7.5, chunk 3) — steps, quorum, the 3 approver
+// types. Separate from the paper designer above: different data (workflow
+// vs elements), different editor shape (a list of step cards, not a
+// draggable canvas).
+manageFormsRouter.get(
+  '/:id/workflow',
+  asyncHandler(async (req, res) => {
+    const form = await loadOwnedForm(req);
+    const [employees, departments] = await Promise.all([orgApi.allEmployees({ active: '1' }), orgApi.departments()]);
+    res.render('form-workflow', { form, user: req.user, tab: 'workflow', employees, departments });
+  }),
+);
+
+manageFormsRouter.post(
+  '/:id/workflow',
+  asyncHandler(async (req, res) => {
+    const steps = JSON.parse(req.body.steps || '[]');
+    const form = await saveWorkflow(req.params.id, req.user.emp_id, steps);
+    res.json({ ok: true, updatedAt: form.updatedAt });
   }),
 );
 

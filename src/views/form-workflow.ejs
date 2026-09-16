@@ -1,0 +1,27 @@
+<%- include('partials/head', {title: form.name + ' — สายอนุมัติ'}) %>
+<body>
+<%- include('partials/topbar', {user}) %>
+<main class="page">
+  <h1><%= form.name %></h1>
+  <%- include('partials/form-design-tabs', { form, tab }) %>
+
+  <div class="designer-toolbar no-print">
+    <span id="workflow-save-status" class="a4-save-status"></span>
+    <span style="flex:1"></span>
+    <button type="button" id="btn-save-workflow" class="button">บันทึกสายอนุมัติ</button>
+  </div>
+
+  <div id="workflow-steps"></div>
+  <button type="button" id="btn-add-step" class="button secondary">+ เพิ่มขั้น</button>
+</main>
+
+<script>
+  window.__WORKFLOW_INIT__ = {
+    formId: <%- JSON.stringify(form._id.toString()) %>,
+    steps: <%- JSON.stringify(form.workflow.steps) %>,
+    employees: <%- JSON.stringify(employees) %>,
+    departments: <%- JSON.stringify(departments) %>,
+  };
+</script>
+<script src="/js/workflow-editor.js"></script>
+<%- include('partials/foot') %>

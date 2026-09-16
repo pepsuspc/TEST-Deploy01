@@ -140,6 +140,40 @@ export async function saveElements(id, empId, elements) {
   return getFormById(id);
 }
 
+// §7.5/§10.6 "สายอนุมัติ" tab — saves the whole workflow.steps array at
+// once, same pattern as saveElements. `resolveAllSteps` in submissions.js
+// does its own dedup at *submit* time (a `relative` might resolve to the
+// same person as a `user` slot only once we know who's submitting) — this
+// validates only what's knowable from the definition alone: every step
+// named, every step has >=1 approver slot, quorum fits.
+export async function saveWorkflow(id, empId, steps) {
+  const form = await getFormById(id);
+  if (!form) throw new HttpError(404, 'ไม่พบฟอร์ม');
+  if (!isFormOwner(form, empId)) throw new HttpError(403, 'ไม่มีสิทธิ์แก้ไขฟอร์มนี้');
+  if (form.status === 'closed') throw new HttpError(409, 'ฟอร์มปิดรับแล้ว แก้สายอนุมัติไม่ได้');
+  if (!Array.isArray(steps) || steps.length === 0) throw new HttpError(400, 'ต้องมีอย่างน้อย 1 ขั้น');
+
+  const seenNames = new Set();
+  for (const step of steps) {
+    if (!step.name?.trim()) throw new HttpError(400, 'ทุกขั้นต้องมีชื่อ');
+    if (seenNames.has(step.name)) throw new HttpError(400, `ชื่อขั้นซ้ำ: "${step.name}" — ชื่อขั้นต้องไม่ซ้ำกันภายในฟอร์ม`);
+    seenNames.add(step.name);
+    if (!step.approvers?.length) throw new HttpError(400, `ขั้น "${step.name}" ต้องมีผู้อนุมัติอย่างน้อย 1 คน`);
+    if (!Number.isInteger(step.quorum) || step.quorum < 1 || step.quorum > step.approvers.length) {
+      throw new HttpError(400, `ขั้น "${step.name}": ค่า quorum ไม่ถูกต้อง`);
+    }
+    for (const a of step.approvers) {
+      if (a.type === 'user' && !a.emp_id) throw new HttpError(400, `ขั้น "${step.name}": ต้องระบุตัวพนักงาน`);
+      if (a.type === 'relative' && !['chief', 'department_head'].includes(a.relation)) {
+        throw new HttpError(400, `ขั้น "${step.name}": ตำแหน่งสัมพัทธ์ไม่ถูกต้อง`);
+      }
+    }
+  }
+
+  await collection().updateOne({ _id: form._id }, { $set: { 'workflow.steps': steps, updatedAt: new Date() } });
+  return getFormById(id);
+}
+
 // §7.2: "สององค์ประกอบในแถวเดียวกันห้ามซ้อนคอลัมน์กัน" — enforced server
 // side too, not just in the designer's own drag logic (a client is not to
 // be trusted any more than a form's own field values are).

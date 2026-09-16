@@ -23,14 +23,26 @@ const round = submission.rounds && submission.rounds.length > 0
       <td><%= submission.submittedAt ? formatThaiDate(submission.submittedAt, { withTime: true }) : '' %></td>
       <td></td>
     </tr>
-    <% round.steps.forEach(function (step) { %>
+    <% round.steps.forEach(function (step, stepIdx) { %>
+      <%
+        // §8.3: once a step's quorum is met, whoever hadn't voted yet no
+        // longer needs to -- the table says so instead of a misleading
+        // "รอ" (§8.7's own example row: "— ไม่ต้องกด (ครบเสียงแล้ว)").
+        // A step is "past" once `current` has moved beyond it, or this
+        // round has already concluded entirely (current is null).
+        const stepIsPast = !submission.current || submission.current.round !== round.round || stepIdx < submission.current.stepIndex;
+      %>
       <% step.approvers.forEach(function (approver, idx) { %>
         <% const activeDecisions = step.decisions.filter(function (d) { return d.emp_id === approver.emp_id && !d.recalledAt; }); %>
         <% const decision = activeDecisions[activeDecisions.length - 1]; %>
         <tr>
           <td><%= idx === 0 ? step.name : '' %></td>
           <td><%= approver.name %></td>
-          <td><%= decision ? (RESULT_LABEL[decision.action] || decision.action) : 'รอ' %></td>
+          <td>
+            <% if (decision) { %><%= RESULT_LABEL[decision.action] || decision.action %>
+            <% } else if (stepIsPast) { %>— ไม่ต้องกด (ครบเสียงแล้ว)
+            <% } else { %>รอ<% } %>
+          </td>
           <td><%= decision ? formatThaiDate(decision.at, { withTime: true }) : '' %></td>
           <td><%= decision && decision.comment ? decision.comment : '' %></td>
         </tr>
