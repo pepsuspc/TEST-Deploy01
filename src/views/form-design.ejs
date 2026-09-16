@@ -52,11 +52,11 @@
 
 <script>
   window.__DESIGNER_INIT__ = {
-    formId: <%- JSON.stringify(form._id.toString()) %>,
-    elements: <%- JSON.stringify(form.elements) %>,
-    fieldTypes: <%- JSON.stringify(fieldTypes) %>,
-    defaultProps: <%- JSON.stringify(defaultPropsByType) %>,
-    autoSources: <%- JSON.stringify(autoSources) %>,
+    formId: <%- jsonScript(form._id.toString()) %>,
+    elements: <%- jsonScript(form.elements) %>,
+    fieldTypes: <%- jsonScript(fieldTypes) %>,
+    defaultProps: <%- jsonScript(defaultPropsByType) %>,
+    autoSources: <%- jsonScript(autoSources) %>,
   };
 </script>
 <script src="/js/designer.js"></script>

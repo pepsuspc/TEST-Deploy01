@@ -17,10 +17,10 @@
 
 <script>
   window.__WORKFLOW_INIT__ = {
-    formId: <%- JSON.stringify(form._id.toString()) %>,
-    steps: <%- JSON.stringify(form.workflow.steps) %>,
-    employees: <%- JSON.stringify(employees) %>,
-    departments: <%- JSON.stringify(departments) %>,
+    formId: <%- jsonScript(form._id.toString()) %>,
+    steps: <%- jsonScript(form.workflow.steps) %>,
+    employees: <%- jsonScript(employees) %>,
+    departments: <%- jsonScript(departments) %>,
   };
 </script>
 <script src="/js/employee-search.js"></script>

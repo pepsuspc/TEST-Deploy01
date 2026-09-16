@@ -333,7 +333,7 @@ const errs = typeof errors === 'undefined' ? {} : errors;
   <% if (typeof choiceEmployees !== 'undefined' && choiceEmployees.length > 0) { %>
     <script>
       (function () {
-        var EMPLOYEES = <%- JSON.stringify(choiceEmployees) %>;
+        var EMPLOYEES = <%- jsonScript(choiceEmployees) %>;
         document.querySelectorAll('[data-emp-search]').forEach(function (el) {
           var restrict = el.dataset.restrictDepartment;
           var list = restrict ? EMPLOYEES.filter(function (e) { return e.department && e.department.id === restrict; }) : EMPLOYEES;

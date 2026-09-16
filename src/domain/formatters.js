@@ -13,3 +13,15 @@ export function formatFileSize(bytes) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+// §12.3: safely embed a data object into an inline `<script>` block.
+// Plain `JSON.stringify` does NOT escape `<`, so a user-entered string
+// containing e.g. a form element label of `</script><script>alert(1)` (set
+// through the designer, then viewed by anyone who opens that form) would
+// close the real script tag early and inject a new one. Every view that
+// bootstraps client-side JS with `<%- JSON.stringify(x) %>` uses this
+// instead — the `<` escape is invisible to JSON.parse but stops the
+// HTML parser from ever seeing a literal `<`.
+export function jsonScript(value) {
+  return JSON.stringify(value).replace(/</g, '\\u003c');
+}

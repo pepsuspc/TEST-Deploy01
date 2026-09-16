@@ -67,9 +67,9 @@
 </main>
 <script>
   window.__FORM_SETTINGS_INIT__ = {
-    employees: <%- JSON.stringify(employees) %>,
-    ownerEmpIds: <%- JSON.stringify(form.ownerEmpIds) %>,
-    coOwnerEmpIds: <%- JSON.stringify(form.coOwnerEmpIds) %>,
+    employees: <%- jsonScript(employees) %>,
+    ownerEmpIds: <%- jsonScript(form.ownerEmpIds) %>,
+    coOwnerEmpIds: <%- jsonScript(form.coOwnerEmpIds) %>,
   };
 </script>
 <script src="/js/employee-search.js"></script>

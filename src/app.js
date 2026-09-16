@@ -1,5 +1,7 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
+import { rateLimit } from 'express-rate-limit';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { healthRouter } from './routes/health.routes.js';
@@ -8,7 +10,7 @@ import { submissionsRouter } from './routes/submissions.routes.js';
 import { sessionMiddleware, requireAuth } from './auth/session.js';
 import { findUserByEmpId } from './models/users.js';
 import { formatThaiDate } from './domain/thaiDate.js';
-import { formatNumber, formatFileSize } from './domain/formatters.js';
+import { formatNumber, formatFileSize, jsonScript } from './domain/formatters.js';
 import { STATUS_LABEL } from './domain/statusLabels.js';
 import { inboxRouter } from './routes/inbox.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
@@ -16,6 +18,13 @@ import { filesRouter } from './routes/files.routes.js';
 import { formsRouter, manageFormsRouter } from './routes/forms.routes.js';
 import { adminRouter } from './routes/admin.routes.js';
 import { HttpError } from './lib/httpError.js';
+import { requireSameOrigin } from './lib/security.js';
+
+// §12.7: "60 ครั้ง/นาที/IP พอ" — a plain in-memory limiter is fine at this
+// app's scale (§13: an internal tool, not a public API); no Redis store
+// needed for a single-process deployment.
+const authRateLimit = rateLimit({ windowMs: 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false });
+const filesRateLimit = rateLimit({ windowMs: 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -27,7 +36,16 @@ export function createApp() {
   app.locals.formatThaiDate = formatThaiDate;
   app.locals.formatNumber = formatNumber;
   app.locals.formatFileSize = formatFileSize;
+  app.locals.jsonScript = jsonScript;
   app.locals.STATUS_LABEL = STATUS_LABEL;
+
+  // §12.8: nosniff, frameguard (X-Frame-Options: DENY), Referrer-Policy,
+  // etc. CSP is left off — this app relies on inline <script> blocks
+  // throughout (bootstrapping each page's client JS with server data via
+  // jsonScript()), and a real CSP here would mean a nonce-based rewrite of
+  // every one of those, which the spec's own §12.8 checklist doesn't ask
+  // for (it names nosniff/frameguard/referrer explicitly, not CSP).
+  app.use(helmet({ contentSecurityPolicy: false, frameguard: { action: 'deny' } }));
 
   // Static files and /healthz need no login (§12.1).
   app.use(express.static(path.join(__dirname, 'public')));
@@ -38,9 +56,10 @@ export function createApp() {
   app.use(cookieParser());
   app.use(requestLogger);
   app.use(sessionMiddleware());
+  app.use(requireSameOrigin);
 
   // /auth/* also needs no login — it's how you get one.
-  app.use('/auth', authRouter);
+  app.use('/auth', authRateLimit, authRouter);
 
   // Every route below this line requires a valid session (§12.1).
   app.use(requireAuth);
@@ -53,7 +72,7 @@ export function createApp() {
   app.use('/submissions', submissionsRouter);
   app.use('/inbox', inboxRouter);
   app.use('/notifications', notificationsRouter);
-  app.use('/files', filesRouter);
+  app.use('/files', filesRateLimit, filesRouter);
   app.use('/forms', formsRouter);
   app.use('/manage/forms', manageFormsRouter);
   app.use('/admin', adminRouter);

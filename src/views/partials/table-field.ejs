@@ -5,18 +5,26 @@ const rows = (value && Array.isArray(value.rows)) ? value.rows : [];
 const minRows = el.props.minRows ?? 1;
 const paddedRows = rows.length >= minRows ? rows : rows.concat(Array(minRows - rows.length).fill({}));
 
+// §12.3: this builds raw HTML strings (bypassing EJS's own auto-escaping
+// output tag), so every piece of it that could ever hold user input — a
+// submitted cell value, or a column's option list set by whoever designed
+// the form — has to be escaped by hand before going into an attribute or
+// tag body.
+function escapeHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function cellInput(col, cellValue, rowIndex) {
   const name = `values[${el.id}][rows][${rowIndex}][${col.key}]`;
   if (col.type === 'date') {
-    return `<input class="a4-input" type="date" name="${name}" value="${cellValue || ''}">`;
+    return `<input class="a4-input" type="date" name="${name}" value="${escapeHtml(cellValue)}">`;
   }
   if (col.type === 'select_one' && col.options) {
-    const opts = col.options.map((o) => `<option value="${o}" ${cellValue === o ? 'selected' : ''}>${o}</option>`).join('');
+    const opts = col.options.map((o) => `<option value="${escapeHtml(o)}" ${cellValue === o ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('');
     return `<select class="a4-input" name="${name}"><option value="">—</option>${opts}</select>`;
   }
   const inputMode = col.type === 'number' ? ' inputmode="decimal"' : '';
-  const escaped = String(cellValue ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-  return `<input class="a4-input" type="text"${inputMode} name="${name}" value="${escaped}">`;
+  return `<input class="a4-input" type="text"${inputMode} name="${name}" value="${escapeHtml(cellValue)}">`;
 }
 %>
 <label class="a4-field-label"><%= el.props.label %></label>
