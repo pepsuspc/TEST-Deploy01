@@ -3,15 +3,13 @@
 Internal online forms + multi-step approval workflow system — replaces paper
 MEMO / request forms. Full requirements: [docs/requirement.md](docs/requirement.md).
 
-This repo currently implements **Chunks 1–3** of the spec: a drag-drop form
-designer (all 10 field types), N-of-M multi-step approval workflows with all
-3 approver types (fixed person, submitter's chief/department head,
-submitter's own choice from a searchable picker), file attachments,
-per-step deadlines, a rounds-based timeline with print-with-history, mock +
-real SSO, and print-perfect A4 pages. See "What's built so far" below for
-the exact feature list, and docs/requirement.md §14 for what's still ahead
-in Chunk 4 (email notifications, CSV export, admin/audit UI, mobile layout,
-security hardening).
+This repo implements the **full v1 scope** (Chunks 1–4 of docs/requirement.md
+§14): a drag-drop form designer (all 10 field types), N-of-M multi-step
+approval workflows with all 3 approver types, file attachments, per-step
+deadlines, email notifications with a retry queue and a daily overdue
+digest, CSV export, an admin settings + audit-log UI, a 375px mobile layout,
+and the §12 security-hardening checklist — on top of mock + real SSO and
+print-perfect A4 pages. See "What's built" below for the full feature list.
 
 ## Run it (dev)
 
@@ -71,13 +69,29 @@ See `.env.example` — every variable is commented there. The app refuses to
 start (with a message listing exactly what's wrong, not a stack trace) if a
 required one is missing or invalid; see `src/config/env.js`.
 
+## Email notifications
+
+`MAIL_MODE=console` (the `.env.example` default) just logs the email to
+stdout instead of sending — the right mode for dev, since it needs no SMTP
+server at all. Set `MAIL_MODE=smtp` and fill in the `SMTP_*` vars for real
+delivery. Either way, sending never blocks a button press: every email is
+written to the `email_queue` collection first and a background worker
+(`src/mail/worker.js`) drains it every minute, retrying a failed send after
+1, 5, then 15 minutes before giving up (§9.2) — so an SMTP outage never
+breaks approving/submitting, it just leaves mail queued. A once-daily digest
+of everyone's overdue items goes out at 08:00 Asia/Bangkok, tracked in the
+`settings` collection so a restart near 08:00 can't double-send or skip a
+day. `/admin/settings` has a "ส่งอีเมลทดสอบถึงฉัน" button and shows the
+current queued/failed counts.
+
 ## Creating the first admin
 
 Admin is a role, not a login: set the employee's `emp_id` in `ADMIN_EMP_IDS`
 (comma-separated for more than one) in `.env` *before* they first log in or
-get synced from the org API — that's when the role gets attached. Admin
-management UI (promoting people after the fact) is chunk 4; for now, adding
-someone later means adding their `emp_id` to `ADMIN_EMP_IDS` and re-syncing.
+get synced from the org API — that's when the role gets attached. After
+that first admin exists, promoting anyone else (to `admin` or `form_owner`)
+is a normal in-app action: `/admin/settings` → search the employee → tick
+the role.
 
 ## Folder structure
 
@@ -90,7 +104,10 @@ src/
   org/                    sellcenter org-chart API client + daily sync
   domain/                 pure business logic (unit tested): evaluateStep,
                            humanizeDuration, docNumber, validateField,
-                           thaiDate, the hardcoded MEMO field/workflow defs
+                           thaiDate, csvExport, the seeded MEMO field/
+                           workflow defs
+  mail/                   email queue worker, SMTP/console sender, the
+                           08:00 overdue digest, plain-text templates
   models/                 thin MongoDB collection helpers (not an ORM)
   routes/                 Express route handlers
   views/                  EJS templates (server-rendered, no frontend framework)
@@ -129,7 +146,7 @@ container) — file attachments live there, validated by magic bytes rather
 than trusting extension/Content-Type. Backups themselves are IT's
 responsibility, not this app's (docs/requirement.md §13).
 
-## What's built so far (Chunks 1–3)
+## What's built
 
 - SSO: real flow per §5 (code-complete, not live-tested against a real
   sellcenter — see `src/auth/sso.js`) + a mock login for dev
@@ -139,7 +156,8 @@ responsibility, not this app's (docs/requirement.md §13).
   select_one, select_many, table with per-column sums, file, static
   heading/paragraph/line, auto), each form rendered on an actual
   A4-proportioned page in both edit and view modes with self-hosted
-  Sarabun for print
+  Sarabun for print — and shrunk to fit (via CSS `zoom`, pinch to read
+  details) rather than reflowed on a phone screen
 - A "สายอนุมัติ" workflow editor per form: any number of steps, each with
   N-of-M quorum and any mix of 3 approver types — a fixed person (via
   searchable employee picker), the submitter's direct chief or department
@@ -150,8 +168,8 @@ responsibility, not this app's (docs/requirement.md §13).
 - File attachments: multer + magic-byte validation (not just
   extension/Content-Type), download permission checks, and a 24h sweep of
   orphaned uploads that never got attached to a submission
-- Per-step deadlines, overdue flagging throughout (inbox, submission view),
-  and `humanizeDuration` for "waited so far" / "overdue by"
+- Per-step deadlines, overdue flagging throughout (inbox, submission view,
+  a daily 08:00 email digest), and `humanizeDuration` for "waited so far"
 - Full submit / save-draft + autosave / validate / approve / reject /
   return / recall / cancel / resubmit-from-a-finished-one, all under
   optimistic concurrency (§8.9) — the version guard uses what the
@@ -160,13 +178,28 @@ responsibility, not this app's (docs/requirement.md §13).
 - A rounds-based timeline: older rounds collapse into `<details>`, the
   latest round stays expanded, and "พิมพ์พร้อมประวัติ" prints the full
   history as an appendix page
-- Inbox (รอฉันอนุมัติ / คำร้องของฉัน), comments, in-app notifications
-  (bell, 30s poll), append-only audit log (no browsing UI for it yet)
-- 403 on an uninvolved employee opening someone else's submission by URL;
-  XSS-safe field rendering everywhere
-
-**Not yet built** (Chunk 4): email notifications (retry queue + daily
-overdue digest), CSV export of a form's submissions, the admin/audit-log
-UI, an admin settings page (letterhead, role assignment, org sync button),
-co-owners UI, a mobile layout pass, and the full §12 security-hardening
-checklist (CSRF tokens, rate limiting, security headers, `npm audit` gate).
+- Email notifications on top of in-app ones (bell, 30s poll) — a durable
+  retry queue (1/5/15-minute backoff) so an SMTP outage never blocks an
+  approve/submit, `MAIL_MODE=console` for dev, and the 08:00 overdue digest
+  above
+- `/manage/forms/:id/submissions`: filter by status/date range/submitter/
+  doc number/เรื่อง, paginated 50 at a time, **Export CSV** (UTF-8 BOM,
+  one column per form field in on-paper order)
+- `/admin/settings`: letterhead management (logo/company info, referenced
+  by a form's settings and rendered on its A4 header), role assignment
+  (search an employee, tick `form_owner`/`admin`), a manual org-sync
+  button, a "send me a test email" button
+- `/admin/audit`: browsable, filterable, paginated view of the append-only
+  audit log every action above already writes to (no delete button,
+  anywhere)
+- Co-owners (search + add/remove on a form's settings page) and
+  department-restricted submission (hidden from `/forms` **and** rejected
+  server-side for anyone outside the allowed departments)
+- Inbox (รอฉันอนุมัติ / คำร้องของฉัน), comments, 403 on an uninvolved
+  employee opening someone else's submission by URL
+- §12 security: XSS-safe everywhere (including a shared `jsonScript()`
+  helper for the inline `<script>` blocks that bootstrap each page's
+  client JS — plain `JSON.stringify` doesn't escape `<`, which is a real
+  `</script>` breakout otherwise), CSRF via SameSite=Lax + an Origin-header
+  check, rate limiting on `/auth/*` and `/files/*`, `helmet` security
+  headers, `npm audit` clean
