@@ -1,0 +1,14 @@
+# Production compose — copied from docs/requirement.md appendix E.2. No
+# `mongo` service here: MONGODB_URI in .env points at digital.in.th, which
+# IT manages (§2 row 8: "คุณไม่ deploy เอง และไม่ได้รับ connection string").
+#
+# IT runs this with: docker compose -f docker-compose.prod.yml up -d --build
+services:
+  app:
+    build: .
+    env_file: .env
+    ports:
+      - "3000:3000"
+    volumes:
+      - /srv/its-forms/uploads:/data/uploads   # path on the server IT backs up (README "What to back up")
+    restart: unless-stopped

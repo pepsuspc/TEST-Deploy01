@@ -641,6 +641,23 @@ export function buildTimeline(submission) {
   return events;
 }
 
+// §8.1/§10.4: "ยื่นใหม่จากใบนี้" — a fresh draft (new doc number when it's
+// eventually submitted) pre-filled with this one's values. Only the
+// original submitter, and only once this submission has actually finished
+// (there's nothing to "start over from" while it's still live).
+export async function resubmitFrom(id, empId) {
+  const original = await getSubmissionById(id);
+  if (!original) throw new HttpError(404, 'ไม่พบคำร้อง');
+  if (original.submitter.emp_id !== empId) throw new HttpError(403, 'ไม่มีสิทธิ์ยื่นใหม่จากคำร้องนี้');
+  if (!['approved', 'rejected', 'cancelled'].includes(original.status)) {
+    throw new HttpError(409, 'ยื่นใหม่ได้เฉพาะคำร้องที่จบแล้ว');
+  }
+  const user = await findUserByEmpId(empId);
+  const draft = await createDraft(user);
+  await collection().updateOne({ _id: draft._id }, { $set: { values: original.values, updatedAt: new Date() } });
+  return { ...draft, values: original.values };
+}
+
 function relatedEmpIds(submission) {
   const ids = new Set([submission.submitter.emp_id]);
   for (const round of submission.rounds ?? []) {

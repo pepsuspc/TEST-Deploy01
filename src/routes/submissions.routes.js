@@ -8,6 +8,7 @@ import {
   decideStep,
   recallDecision,
   cancelSubmission,
+  resubmitFrom,
   addComment,
   elementsFor,
   isRelatedToSubmission,
@@ -189,6 +190,22 @@ submissionsRouter.post(
       summary: `${req.user.name} แสดงความเห็น`,
     });
     res.redirect(`/submissions/${req.params.id}`);
+  }),
+);
+
+submissionsRouter.post(
+  '/:id/resubmit-from',
+  asyncHandler(async (req, res) => {
+    const draft = await resubmitFrom(req.params.id, req.user.emp_id);
+    await writeAuditLog({
+      actorEmpId: req.user.emp_id,
+      actorName: req.user.name,
+      action: 'resubmit_from',
+      entityType: 'submission',
+      entityId: req.params.id,
+      summary: `${req.user.name} ยื่นใหม่จาก ${req.params.id} เป็นร่างใหม่ ${draft._id}`,
+    });
+    res.redirect(`/submissions/${draft._id}/edit`);
   }),
 );
 

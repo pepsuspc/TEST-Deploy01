@@ -38,6 +38,11 @@ const formName = submission.snapshot ? submission.snapshot.formName : 'MEMO ข�
       <% if (submission.status === 'draft' && submission.submitter.emp_id === user.emp_id) { %>
         <a href="/submissions/<%= submission._id %>/edit" class="button secondary">แก้ไขร่าง</a>
       <% } %>
+      <% if (['approved','rejected','cancelled'].includes(submission.status) && submission.submitter.emp_id === user.emp_id) { %>
+        <form method="POST" action="/submissions/<%= submission._id %>/resubmit-from" style="display:inline">
+          <button type="submit" class="button secondary">ยื่นใหม่จากใบนี้</button>
+        </form>
+      <% } %>
       <button type="button" class="button secondary" onclick="window.print()">พิมพ์</button>
     </div>
 
