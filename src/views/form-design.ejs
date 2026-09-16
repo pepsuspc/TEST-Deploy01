@@ -1,0 +1,63 @@
+<%- include('partials/head', {title: form.name + ' — ออกแบบ'}) %>
+<body>
+<%- include('partials/topbar', {user}) %>
+<main class="page designer-page">
+  <h1><%= form.name %></h1>
+  <%- include('partials/form-design-tabs', { form, tab }) %>
+
+  <div class="designer-toolbar no-print">
+    <button type="button" id="btn-undo" class="button secondary" disabled>↶ Undo</button>
+    <button type="button" id="btn-redo" class="button secondary" disabled>↷ Redo</button>
+    <button type="button" id="btn-toggle-grid" class="button secondary">เส้นกริด</button>
+    <button type="button" id="btn-preview" class="button secondary">ดูตัวอย่าง</button>
+    <span id="designer-save-status" class="a4-save-status"></span>
+    <span style="flex:1"></span>
+    <% if (form.elements.length === 0) { %><span class="a4-save-status">ฟอร์มยังไม่มีองค์ประกอบ</span><% } %>
+  </div>
+
+  <div class="designer-layout">
+    <aside class="designer-palette no-print">
+      <h3>องค์ประกอบ</h3>
+      <ul id="palette-list">
+        <% fieldTypes.forEach(function (ft) { %>
+          <li class="palette-item" draggable="true" data-type="<%= ft.type %>"><%= ft.label %></li>
+        <% }) %>
+      </ul>
+      <p class="designer-hint">ลากมาวางบนกระดาษ</p>
+    </aside>
+
+    <div class="designer-canvas-wrap">
+      <div class="a4-page-wrap">
+        <div class="a4-page" id="designer-canvas" tabindex="0">
+          <div class="a4-letterhead">
+            <div class="a4-letterhead-logo"></div>
+            <div class="a4-letterhead-company">ชื่อบริษัท (ตัวอย่าง)<br>ที่อยู่บริษัท</div>
+          </div>
+          <div class="a4-title-bar">
+            <div></div>
+            <div class="a4-form-title"><%= form.name %></div>
+            <div class="a4-doc-number">(ตัวอย่างเลขที่)</div>
+          </div>
+          <div id="canvas-rows"></div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="designer-props no-print" id="designer-props">
+      <h3>คุณสมบัติ</h3>
+      <p class="designer-hint">คลิกองค์ประกอบเพื่อแก้ไข</p>
+    </aside>
+  </div>
+</main>
+
+<script>
+  window.__DESIGNER_INIT__ = {
+    formId: <%- JSON.stringify(form._id.toString()) %>,
+    elements: <%- JSON.stringify(form.elements) %>,
+    fieldTypes: <%- JSON.stringify(fieldTypes) %>,
+    defaultProps: <%- JSON.stringify(defaultPropsByType) %>,
+    autoSources: <%- JSON.stringify(autoSources) %>,
+  };
+</script>
+<script src="/js/designer.js"></script>
+<%- include('partials/foot') %>

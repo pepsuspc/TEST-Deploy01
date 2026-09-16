@@ -15,6 +15,8 @@ import {
 } from '../models/forms.js';
 import { listSubmissionsForForm } from '../models/submissions.js';
 import { orgApi } from '../org/client.js';
+import { FIELD_TYPES, AUTO_SOURCES, defaultPropsFor } from '../domain/fieldTypes.js';
+import { buildSampleSubmission } from '../domain/sampleValues.js';
 import { HttpError } from '../lib/httpError.js';
 import { writeAuditLog } from '../models/auditLog.js';
 
@@ -88,7 +90,15 @@ manageFormsRouter.get(
   '/:id/design',
   asyncHandler(async (req, res) => {
     const form = await loadOwnedForm(req);
-    res.render('form-design', { form, user: req.user, tab: 'design' });
+    const defaultPropsByType = Object.fromEntries(FIELD_TYPES.map((ft) => [ft.type, defaultPropsFor(ft.type)]));
+    res.render('form-design', {
+      form,
+      user: req.user,
+      tab: 'design',
+      fieldTypes: FIELD_TYPES,
+      defaultPropsByType,
+      autoSources: AUTO_SOURCES,
+    });
   }),
 );
 
@@ -98,6 +108,32 @@ manageFormsRouter.post(
     const elements = JSON.parse(req.body.elements || '[]');
     const form = await saveElements(req.params.id, req.user.emp_id, elements);
     res.json({ ok: true, formVersion: form.formVersion, updatedAt: form.updatedAt });
+  }),
+);
+
+// §7.2/§10.6 "ดูตัวอย่าง" — renders the in-progress (possibly unsaved)
+// layout through the exact same view-mode template a real submission
+// uses, fed fabricated values, so what the designer shows is provably the
+// same renderer a filled-in form would use — not a second reimplementation
+// that could quietly drift from it.
+manageFormsRouter.post(
+  '/:id/preview',
+  asyncHandler(async (req, res) => {
+    const form = await loadOwnedForm(req);
+    const elements = JSON.parse(req.body.elements || '[]');
+    const submission = buildSampleSubmission({ formName: form.name, elements });
+    res.render('memo-a4', {
+      mode: 'view',
+      submission,
+      elements,
+      formName: form.name,
+      errors: {},
+      user: req.user,
+      canDecide: false,
+      canRecall: false,
+      canCancel: false,
+      timeline: [],
+    });
   }),
 );
 
