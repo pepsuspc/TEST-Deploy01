@@ -3,12 +3,15 @@
 Internal online forms + multi-step approval workflow system — replaces paper
 MEMO / request forms. Full requirements: [docs/requirement.md](docs/requirement.md).
 
-This repo currently implements **Chunk 1** of the spec (milestone M1): a
-single hardcoded MEMO form, a real 2-step approval workflow (submitter's
-chief, then a fixed second approver), mock + real SSO, print-perfect A4
-pages, inbox, notifications, and audit logging. See "What's in Chunk 1" below
-for the exact feature list, and docs/requirement.md §14 for what's still
-ahead in chunks 2–4.
+This repo currently implements **Chunks 1–3** of the spec: a drag-drop form
+designer (all 10 field types), N-of-M multi-step approval workflows with all
+3 approver types (fixed person, submitter's chief/department head,
+submitter's own choice from a searchable picker), file attachments,
+per-step deadlines, a rounds-based timeline with print-with-history, mock +
+real SSO, and print-perfect A4 pages. See "What's built so far" below for
+the exact feature list, and docs/requirement.md §14 for what's still ahead
+in Chunk 4 (email notifications, CSV export, admin/audit UI, mobile layout,
+security hardening).
 
 ## Run it (dev)
 
@@ -122,35 +125,48 @@ IT and what to use as a fallback while waiting on it.
 
 The `its_forms` MongoDB database, and whatever host path is bind-mounted to
 `/data/uploads` in `docker-compose.prod.yml` (`UPLOAD_DIR` inside the
-container). Chunk 1 doesn't use file uploads yet (that's chunk 2's `file`
-field type), so today there's nothing under that path — but the mount and
-this note exist now so nothing has to change later. Backups themselves are
-IT's responsibility, not this app's (docs/requirement.md §13).
+container) — file attachments live there, validated by magic bytes rather
+than trusting extension/Content-Type. Backups themselves are IT's
+responsibility, not this app's (docs/requirement.md §13).
 
-## What's in Chunk 1
+## What's built so far (Chunks 1–3)
 
 - SSO: real flow per §5 (code-complete, not live-tested against a real
   sellcenter — see `src/auth/sso.js`) + a mock login for dev
   (`AUTH_MODE=mock`)
-- One hardcoded MEMO form: เรื่อง, เรียน, วันที่ (auto), a 5-option
-  checkbox row, รายละเอียด — rendered on an actual A4-proportioned page in
-  both edit and view modes, with self-hosted Sarabun for print
-- A real 2-step approval workflow: submitter's direct chief (resolved from
-  live org-chart data), then a fixed second approver — submit, save draft
-  + autosave, validate, approve/reject/return, recall (both "submitter
-  before anyone acts" and "approver after acting, before the next step
-  moves"), cancel, resubmit-from-a-finished-one
-- Optimistic concurrency on every write (§8.9) — the version guard uses
-  what the browser's page actually rendered, not a version re-read at
-  request time; see the commit history for why that distinction mattered
-- Inbox (รอฉันอนุมัติ / คำร้องของฉัน), a per-submission timeline +
-  comments, in-app notifications (bell, 30s poll), append-only audit log
-  (no browsing UI for it yet)
+- Drag-drop form designer (`src/public/js/designer.js`) supporting all 10
+  field types from §7.3 (short/long text, number, date/date-range,
+  select_one, select_many, table with per-column sums, file, static
+  heading/paragraph/line, auto), each form rendered on an actual
+  A4-proportioned page in both edit and view modes with self-hosted
+  Sarabun for print
+- A "สายอนุมัติ" workflow editor per form: any number of steps, each with
+  N-of-M quorum and any mix of 3 approver types — a fixed person (via
+  searchable employee picker), the submitter's direct chief or department
+  head (resolved live from org-chart data), or a slot the submitter picks
+  themselves at submit time (with an optional department restriction);
+  approvers are deduped per step and quorum is clamped to however many
+  distinct people actually ended up in the step
+- File attachments: multer + magic-byte validation (not just
+  extension/Content-Type), download permission checks, and a 24h sweep of
+  orphaned uploads that never got attached to a submission
+- Per-step deadlines, overdue flagging throughout (inbox, submission view),
+  and `humanizeDuration` for "waited so far" / "overdue by"
+- Full submit / save-draft + autosave / validate / approve / reject /
+  return / recall / cancel / resubmit-from-a-finished-one, all under
+  optimistic concurrency (§8.9) — the version guard uses what the
+  browser's page actually rendered, not a version re-read at request time;
+  see the commit history for why that distinction mattered
+- A rounds-based timeline: older rounds collapse into `<details>`, the
+  latest round stays expanded, and "พิมพ์พร้อมประวัติ" prints the full
+  history as an appendix page
+- Inbox (รอฉันอนุมัติ / คำร้องของฉัน), comments, in-app notifications
+  (bell, 30s poll), append-only audit log (no browsing UI for it yet)
 - 403 on an uninvolved employee opening someone else's submission by URL;
   XSS-safe field rendering everywhere
 
-**Not yet built** (chunks 2–4): the drag-drop form designer and the other 9
-field types, N-of-M multi-approver quorum and `submitter_choice`, file
-attachments, per-step deadlines, email notifications, CSV export, the
-admin/audit-log UI, mobile layout pass, and the full §12 security-hardening
+**Not yet built** (Chunk 4): email notifications (retry queue + daily
+overdue digest), CSV export of a form's submissions, the admin/audit-log
+UI, an admin settings page (letterhead, role assignment, org sync button),
+co-owners UI, a mobile layout pass, and the full §12 security-hardening
 checklist (CSRF tokens, rate limiting, security headers, `npm audit` gate).
