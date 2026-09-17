@@ -31,6 +31,22 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export function createApp() {
   const app = express();
 
+  // Required behind any TLS-terminating reverse proxy (Render, and
+  // wherever IT's own production deploy eventually sits) — without this,
+  // Express has no way to know the original request was HTTPS (it only
+  // ever sees the proxy's plain-HTTP hop to the container) and treats
+  // every request as insecure. That silently breaks login: the session
+  // cookie is configured `secure: true` whenever APP_URL is https (§5.5),
+  // and the `cookies` library cookie-session uses under the hood refuses
+  // to ever set a `Secure`-flagged cookie on a request it believes is
+  // plain HTTP — so `res.redirect('/')` after login "succeeds" with no
+  // Set-Cookie header at all, and the browser is never actually signed
+  // in. Found live: a real deploy on Render reproduced exactly this
+  // (login redirected fine, but no session cookie ever arrived) — every
+  // local/Docker test before this had run over plain http, where
+  // `secure: false` never exercised this code path at all.
+  app.set('trust proxy', 1);
+
   app.set('view engine', 'ejs');
   app.set('views', path.join(__dirname, 'views'));
   app.locals.formatThaiDate = formatThaiDate;
